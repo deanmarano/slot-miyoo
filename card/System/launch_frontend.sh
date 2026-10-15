@@ -16,9 +16,42 @@ SD="${SLOT_ROOT:-/mnt/SDCARD}"
 SYS="$SD/System"
 export SLOT_ROOT="$SD"
 
+# Which Miyoo is this? Detected the way the stock boot hook does it
+# (card/.tmp_update/updater), because that is the test the firmware itself
+# trusts: 285 is the Mini Flip, 354 the Mini Plus, 283 the original Mini.
+#
+# This matters because two of the settings below are measured facts about the
+# *Flip's* panel, not about the SoC, and applying them to another model would
+# be inventing hardware facts. Override with SLOT_MIYOO_MODEL if the detection
+# is ever wrong on a model nobody here has tested.
+if [ -n "${SLOT_MIYOO_MODEL:-}" ]; then
+	MODEL="$SLOT_MIYOO_MODEL"
+elif [ -e /dev/input/event1 ]; then
+	MODEL=285
+elif [ -f /customer/app/axp_test ]; then
+	MODEL=354
+else
+	MODEL=283
+fi
+
 # The Mini Flip's LCD is fitted upside down: a frame written top-down to
-# /dev/fb0 appears inverted on the panel, confirmed on the device.
-export SLOT_FB_ROTATE=180
+# /dev/fb0 appears inverted on the panel, confirmed on the device. No other
+# model has been checked, so no other model gets the rotation -- a wrong
+# rotation is an upside-down screen, which looks like a crash to anyone who
+# has not read this comment. Set SLOT_FB_ROTATE=180 by hand to try it.
+if [ "$MODEL" = 285 ]; then
+	export SLOT_FB_ROTATE=180
+fi
+
+# The build's canvas is the Flip's 752x560 panel (OUT_W/OUT_H in
+# crates/slot-gfx/src/surface.rs, set by patches/0002). The Mini and Mini Plus
+# are 640x480, so this binary will not lay out correctly on them -- it is not
+# a runtime setting yet. Say so in the log rather than drawing something wrong
+# in silence; see notes/variants.md.
+if [ "$MODEL" != 285 ]; then
+	echo "slot: model $MODEL is not the Mini Flip (285) this build is sized for;" >&2
+	echo "slot: the canvas is 752x560 and this panel is not. See notes/variants.md" >&2
+fi
 
 # Diagnostics, off by default because each writes a line per frame or per event
 # to the card:

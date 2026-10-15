@@ -231,7 +231,11 @@ tasks:
       # friends, and logs an error for each one it cannot find -- then ours on
       # top, which replaces its launch_frontend.sh with the armv7 one.
       - cp -R {{.UPSTREAM}}/card/System/. {{.OUT}}/System/
-      - cp card/System/launch_frontend.sh card/System/probe.sh card/System/probe-run.sh card/System/net-up.sh card/System/coresave-miyoo.sh {{.OUT}}/System/
+      # Ours last, so they win over the upstream copies above:
+      # launch_frontend.sh is the armv7 one, and slotlink.sh is the
+      # single-interface 2.4 GHz radio this device has rather than the
+      # Anbernic's dual-interface 5 GHz one.
+      - cp card/System/launch_frontend.sh card/System/slotlink.sh card/System/probe.sh card/System/probe-run.sh card/System/linkprobe.sh card/System/net-up.sh card/System/coresave-miyoo.sh {{.OUT}}/System/
       - cp target-miyoo/rust/{{.TARGET}}/device/slot {{.OUT}}/System/slot
       - cp vendor-miyoo/gpsp_libretro.so vendor-miyoo/mgba_libretro.so {{.OUT}}/System/
       - cp vendor-miyoo/libslotao.so {{.OUT}}/System/
@@ -394,6 +398,24 @@ tasks:
             cd {{.UPSTREAM}} && QEMU_LD_PREFIX=/opt/miyoomini-toolchain/arm-linux-gnueabihf/libc
             cargo test -p slot-gfx -p slot-power --lib --target {{.TARGET}}
             --no-default-features --features software
+      # The card scripts too. These run on the build host, not under qemu --
+      # they are busybox sh, and busybox is where they have to be right.
+      - task: test:card
+
+  test:card:
+    desc: Run the card scripts' own tests under a real busybox
+    cmds:
+      # busybox, not the host shell: the host is fish with GNU coreutils
+      # behind it and will happily accept what the device cannot run.
+      - docker run --rm -v "$PWD":/src busybox:1.36 sh /src/card/test-slotlink-miyoo.sh
+      # Syntax alone for the rest, which all want a device to do anything.
+      - |
+        set -eu
+        for f in card/System/*.sh card/App/*/launch.sh card/Apps/*/launch.sh; do
+          docker run --rm -v "$PWD":/src busybox:1.36 sh -n "/src/$f" \
+            || { echo "busybox cannot parse $f" >&2; exit 1; }
+        done
+        echo "card scripts: all parse under busybox"
 
   device:find:
     desc: >-

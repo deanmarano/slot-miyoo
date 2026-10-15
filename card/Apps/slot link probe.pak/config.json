@@ -1,0 +1,5 @@
+{
+	"label": "slot link probe",
+	"launch": "launch.sh",
+	"description": "Test whether this radio can host a two-player link"
+}
