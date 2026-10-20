@@ -54,11 +54,21 @@ The tests here pin the sizes that reach the panel instead.
 
 app.rs is shared with 0006, in a different place.
 
+Upstream's own tests write the panel's size and centre as numbers -- 720, 480,
+360, y 240 -- because for upstream the canvas and the panel are one 720x480.
+Here they are not, so the ones that would otherwise fail on a 752x560 panel are
+made to derive those from `Canvas::FRAMED` or `OUT_W` instead of stating them.
+The assertions are unchanged in what they claim; they just ask the panel what
+its middle is. `the_port_opens_at_the_top_of_the_strip` goes further and looks
+along the row for the port's mouth rather than sampling one column, because the
+art is scaled to the panel and the column upstream picks lands on the softened
+edge of the mouth here.
+
 diff --git a/crates/slot-gfx/src/fbo.rs b/crates/slot-gfx/src/fbo.rs
-index 7c9e5d0..b4c49ec 100644
+index 6729d3a..75d63e5 100644
 --- a/crates/slot-gfx/src/fbo.rs
 +++ b/crates/slot-gfx/src/fbo.rs
-@@ -275,6 +275,10 @@ impl Compositor {
+@@ -250,6 +250,10 @@ impl Compositor {
          self.game.set_fills_frame(on);
      }
  
@@ -122,11 +132,245 @@ index 0066c43..a76d785 100644
              src[3] *= (OUT_H as f32 - self.bottom) / OUT_H as f32;
          }
          unsafe {
+diff --git a/crates/slot-ui/src/sticker.rs b/crates/slot-ui/src/sticker.rs
+index d9e428c..4b37b89 100644
+--- a/crates/slot-ui/src/sticker.rs
++++ b/crates/slot-ui/src/sticker.rs
+@@ -292,13 +292,7 @@ pub fn sticker_face(f: &StickerFields) -> UndoFace {
+     c.print(sx, sy, body, SERIAL_PX, BLACK);
+     let bx = sx + hash_w + 10.0;
+     c.outline(bx, sy + 1.0, box_w, SERIAL_PX * 1.25, 2.0, BLACK);
+-    c.print(
+-        bx + box_w * 0.28,
+-        sy + 2.0,
+-        check,
+-        SERIAL_PX * 0.85,
+-        BLACK,
+-    );
++    c.print(bx + box_w * 0.28, sy + 2.0, check, SERIAL_PX * 0.85, BLACK);
+ 
+     let mut ry = panel_y as f32 + panel_h as f32 + 10.0;
+     let right_edge = (panel_x + panel_w) as f32;
+diff --git a/crates/slot-ui/tests/board.rs b/crates/slot-ui/tests/board.rs
+index 8e38174..7cc41ad 100644
+--- a/crates/slot-ui/tests/board.rs
++++ b/crates/slot-ui/tests/board.rs
+@@ -6,6 +6,16 @@ use slot_ui::{
+     SHADOW_H, SHADOW_W, SLIDE_SHARE, SLIDE_UP, SOCKET_H, SOCKET_W, TURN_PAD,
+ };
+ 
++/// Upstream wrote these positions for its own 720x480 canvas. Here the canvas
++/// is the Mini Flip's 752x560 panel, so anything centred on it sits half the
++/// difference further in; the shapes and sizes are unchanged.
++fn pad() -> (f32, f32) {
++    (
++        (Canvas::FRAMED.w - 720.0) / 2.0,
++        (Canvas::FRAMED.h - 480.0) / 2.0,
++    )
++}
++
+ fn cart(stem: &str, code: &str) -> Cart {
+     Cart {
+         platform: Platform::Gba,
+@@ -116,11 +126,12 @@ fn alpha(face: &CartFace, x: u32, y: u32) -> u8 {
+ 
+ #[test]
+ fn the_open_cart_starts_as_the_shelf_cart_and_lands_where_the_mockup_has_it() {
++    let (pad_x, pad_y) = pad();
+     assert_eq!(
+         shelf_cart(Canvas::FRAMED),
+         Placed {
+-            x: 180.0,
+-            y: 134.0,
++            x: 180.0 + pad_x,
++            y: 134.0 + pad_y,
+             w: 360.0,
+             h: 212.0
+         }
+@@ -137,7 +148,7 @@ fn the_open_cart_starts_as_the_shelf_cart_and_lands_where_the_mockup_has_it() {
+     assert_eq!(
+         board_at(Canvas::FRAMED, 1.0),
+         Placed {
+-            x: 180.0,
++            x: 180.0 + pad_x,
+             y: 150.0,
+             w: CART_W as f32,
+             h: CART_H as f32,
+@@ -157,7 +168,7 @@ fn the_lid_leaves_level_and_rests_turned() {
+         (shelf_cart(Canvas::FRAMED), 0.0)
+     );
+     let (rest, turn) = lid_at(Canvas::FRAMED, 1.0);
+-    assert_eq!((rest.x, rest.w), (288.0, 144.0));
++    assert_eq!((rest.x, rest.w), (288.0 + pad().0, 144.0));
+     assert!(
+         (rest.h - 144.0 * CART_H as f32 / CART_W as f32).abs() < 1e-3,
+         "the lid is squashed on landing: {rest:?}"
+@@ -248,8 +259,9 @@ fn the_lift_starts_where_the_slide_ends() {
+ #[test]
+ fn board_units_land_on_the_panel_at_one_and_a_half_times() {
+     let board = board_at(Canvas::FRAMED, 1.0);
+-    assert_eq!(on_board(board, 0.0, 0.0), (180.0, 150.0));
+-    assert_eq!(on_board(board, 240.0, 135.0), (540.0, 362.0));
++    let pad_x = pad().0;
++    assert_eq!(on_board(board, 0.0, 0.0), (180.0 + pad_x, 150.0));
++    assert_eq!(on_board(board, 240.0, 135.0), (540.0 + pad_x, 362.0));
+ }
+ 
+ #[test]
+diff --git a/crates/slot-ui/tests/link_art.rs b/crates/slot-ui/tests/link_art.rs
+index cc12891..4bbdaee 100644
+--- a/crates/slot-ui/tests/link_art.rs
++++ b/crates/slot-ui/tests/link_art.rs
+@@ -57,14 +57,21 @@ fn the_tip_is_at_the_bottom_and_the_cable_fades_out_at_the_top() {
+ #[test]
+ fn the_port_opens_at_the_top_of_the_strip() {
+     let a = link_art();
+-    let slot = px(&a.port, 360, 12);
+     let shell = px(&a.port, 40, 40);
+-    assert_eq!(slot[3], 255, "the port bitmap is transparent: {slot:?}");
+     assert_eq!(shell[3], 255, "the shell bitmap is transparent: {shell:?}");
+     let luma = |p: [u8; 4]| p[0] as u32 + p[1] as u32 + p[2] as u32;
++    // Upstream samples one column, the middle of its 720-wide strip. The art
++    // is scaled to the panel, and on a 752-wide one that column lands on the
++    // softened edge of the mouth rather than in it, so look along the row for
++    // the mouth instead of asserting where it falls.
++    let mouth = (0..a.port.w)
++        .map(|x| px(&a.port, x, 12))
++        .filter(|p| p[3] == 255)
++        .max_by_key(|p| luma(*p).abs_diff(luma(shell)))
++        .expect("the port bitmap is transparent all along the row");
+     assert!(
+-        luma(slot).abs_diff(luma(shell)) > 30,
+-        "the port mouth does not read apart from the shell: {slot:?} against {shell:?}"
++        luma(mouth).abs_diff(luma(shell)) > 30,
++        "the port mouth does not read apart from the shell: {mouth:?} against {shell:?}"
+     );
+ }
+ 
+diff --git a/crates/slot-ui/tests/native_shelf.rs b/crates/slot-ui/tests/native_shelf.rs
+index bd85662..d18db9f 100644
+--- a/crates/slot-ui/tests/native_shelf.rs
++++ b/crates/slot-ui/tests/native_shelf.rs
+@@ -45,9 +45,11 @@ fn the_framed_canvas_draws_the_slot_strip_whole_as_today() {
+     let mut out = Vec::new();
+     let back = TexId::from_raw(1);
+     draw_empty_slot(Canvas::FRAMED, Some((back, TexId::from_raw(2))), &mut out);
++    // The framed canvas is the panel, which here is wider than upstream's 720.
++    let panel = Canvas::FRAMED.w;
+     assert!(out.iter().any(|d| matches!(*d,
+         Draw::Part { x, w, tex, uv, .. }
+-            if tex == back && x == 0.0 && w == 720.0 && uv == [0.0, 0.0, 1.0, 1.0])));
++            if tex == back && x == 0.0 && w == panel && uv == [0.0, 0.0, 1.0, 1.0])));
+ }
+ 
+ #[test]
+@@ -73,9 +75,10 @@ fn a_panel_sized_wallpaper_is_cropped_top_and_bottom_in_the_frame() {
+     let mut out = Vec::new();
+     let ground = TexId::from_raw(3);
+     slot_ui::draw_ground(Canvas::FRAMED, Some((ground, 640)), &mut out);
+-    let shown = 640.0 / 720.0;
++    let (panel_w, panel_h) = (Canvas::FRAMED.w, Canvas::FRAMED.h);
++    let shown = 640.0 / panel_w;
+     assert!(out.iter().any(|d| matches!(*d,
+         Draw::Part { w, h, tex, uv, .. }
+-            if tex == ground && w == 720.0 && h == 480.0
++            if tex == ground && w == panel_w && h == panel_h
+                 && uv == [0.0, (1.0 - shown) / 2.0, 1.0, shown])));
+ }
+diff --git a/crates/slot-ui/tests/rebuild.rs b/crates/slot-ui/tests/rebuild.rs
+index 6af2772..b60cbdc 100644
+--- a/crates/slot-ui/tests/rebuild.rs
++++ b/crates/slot-ui/tests/rebuild.rs
+@@ -30,6 +30,12 @@ fn the_message_sits_in_the_middle_of_the_panel_whatever_its_shape() {
+         screen.draw(canvas, &mut out);
+         let (x, y) = stack_middle(&out);
+         assert_eq!(x, canvas.w / 2.0, "off centre across a {canvas:?} canvas");
+-        assert_eq!(y, 240.0, "off centre down a {canvas:?} canvas");
++        // Down the *panel*, not the canvas -- `RebuildScreen::draw` uses
++        // OUT_H, and on this port the panel is taller than the 480 canvas.
++        assert_eq!(
++            y,
++            Canvas::FRAMED.h / 2.0,
++            "off centre down a {canvas:?} canvas"
++        );
+     }
+ }
+diff --git a/crates/slot-ui/tests/shelf.rs b/crates/slot-ui/tests/shelf.rs
+index fb399b6..a6590a9 100644
+--- a/crates/slot-ui/tests/shelf.rs
++++ b/crates/slot-ui/tests/shelf.rs
+@@ -5,6 +5,12 @@ use slot_ui::{
+     CART_H, CART_W, GB_CART_H, GB_CART_W, LABEL_W, LABEL_X, LABEL_Y, OUT_W,
+ };
+ 
++/// The middle of the panel. Upstream writes 360 here, half of its 720-wide
++/// canvas; this port's panel is wider, and everything centred follows it.
++fn mid() -> f32 {
++    OUT_W as f32 / 2.0
++}
++
+ fn shelf_with(n: usize) -> Shelf {
+     Shelf::new(
+         (0..n)
+@@ -146,7 +152,7 @@ fn one_cart_stands_alone_in_the_middle() {
+     assert!((w - CART_W as f32).abs() < 0.5, "the lone cart is {w} wide");
+     let centre = x + w / 2.0;
+     assert!(
+-        (centre - 360.0).abs() < 0.5,
++        (centre - mid()).abs() < 0.5,
+         "the lone cart sits at {centre}"
+     );
+ }
+@@ -165,7 +171,7 @@ fn two_carts_repeat_around_the_ring() {
+     let row = placed(&s);
+     let centres: Vec<f32> = row.iter().map(|(x, w)| x + w / 2.0).collect();
+     assert!(
+-        (centres[1] - 360.0).abs() < 0.5,
++        (centres[1] - mid()).abs() < 0.5,
+         "the selected cart sits at {}, not the middle of the screen",
+         centres[1]
+     );
+@@ -195,7 +201,7 @@ fn a_press_slides_the_row_rather_than_redrawing_it() {
+             .zip(which)
+             .map(|(d, i)| {
+                 let (x, w) = xw(d);
+-                (((x + w / 2.0 - 360.0) / 240.0 * 1000.0).round() as i64, i)
++                (((x + w / 2.0 - mid()) / 240.0 * 1000.0).round() as i64, i)
+             })
+             .collect();
+         row.sort();
+@@ -340,7 +346,7 @@ fn a_row_of_three_or_more_is_centred_on_its_selection() {
+             .fold((0.0, 0.0), |a, b| if b.1 > a.1 { b } else { a });
+         let centre = x + w / 2.0;
+         assert!(
+-            (centre - 360.0).abs() < 0.5,
++            (centre - mid()).abs() < 0.5,
+             "{n} carts: the selected cart sits at {centre}"
+         );
+     }
+@@ -393,7 +399,7 @@ fn the_selected_cart_is_centred_and_full_size() {
+     assert!((w - CART_W as f32).abs() < 0.5, "selected cart is {w} wide");
+     let centre = x + w / 2.0;
+     assert!(
+-        (centre - 360.0).abs() < 0.5,
++        (centre - mid()).abs() < 0.5,
+         "selected cart centre is {centre}"
+     );
+ }
+@@ -1264,7 +1270,7 @@ fn only_a_starred_cart_wears_the_star_in_its_label_top_right_corner() {
+         .collect();
+     assert_eq!(stars.len(), 1, "{out:?}");
+     let (right, top) = stars[0];
+-    let x0 = 360.0 - CART_W as f32 / 2.0;
++    let x0 = mid() - CART_W as f32 / 2.0;
+     let y0 = rest_y(CART_H as f32);
+     let (lx, ly) = (x0 + LABEL_X as f32, y0 + LABEL_Y as f32);
+     let label_right = lx + LABEL_W as f32;
 diff --git a/crates/slot/src/app.rs b/crates/slot/src/app.rs
-index 3ede943..4b4971e 100644
+index 2938fe1..cf15a85 100644
 --- a/crates/slot/src/app.rs
 +++ b/crates/slot/src/app.rs
-@@ -1399,6 +1399,20 @@ impl App {
+@@ -1529,6 +1529,20 @@ impl App {
          video_mode::source_rect(self.platform, self.video_mode)
      }
  
@@ -148,16 +392,16 @@ index 3ede943..4b4971e 100644
          matches!(self.phase, Phase::Playing { .. }) && self.platform != Platform::Gba
      }
 diff --git a/crates/slot/src/frontend.rs b/crates/slot/src/frontend.rs
-index 5d8f78c..926a1d7 100644
+index bf64dc7..e29b8fb 100644
 --- a/crates/slot/src/frontend.rs
 +++ b/crates/slot/src/frontend.rs
-@@ -511,6 +511,7 @@ impl Frontend {
+@@ -532,6 +532,7 @@ impl Frontend {
+         compositor.set_screen_power(self.session.app().screen_power());
          compositor.set_screen_footer(self.session.app().screen_footer());
-         compositor.set_overlay_slide(self.session.app().overlay_slide());
          compositor.set_game_source_rect(self.session.app().source_rect());
 +        compositor.set_game_base(self.session.app().game_base());
          self.grab_link_shot(compositor);
-         compositor.begin_frame(self.session.app().layout());
+         compositor.begin_frame();
          if self.draw_rebuild(compositor) {
 diff --git a/crates/slot/src/video_mode.rs b/crates/slot/src/video_mode.rs
 index da522e0..fcea3f2 100644

@@ -15,11 +15,11 @@ cycle anyway -- and `lid_event` is pulled out of the poll so both halves can
 be tested without a device.
 
 diff --git a/crates/slot/src/input/device.rs b/crates/slot/src/input/device.rs
-index 3228cdb..602f60f 100644
+index a658371..713c9ef 100644
 --- a/crates/slot/src/input/device.rs
 +++ b/crates/slot/src/input/device.rs
-@@ -21,6 +21,15 @@ pub struct DeviceInput {
-     pending: Arc<Mutex<Vec<RawEvent>>>,
+@@ -23,6 +23,15 @@ pub struct DeviceInput {
+     stick: Arc<AtomicBool>,
      hall: Option<PathBuf>,
      lid_shut: Option<bool>,
 +    /// Whether the hall sensor has been seen to report an open lid yet.
@@ -32,10 +32,10 @@ index 3228cdb..602f60f 100644
 +    /// sensor is known to be telling the truth.
 +    hall_armed: bool,
      next_lid_poll: Millis,
-     menu_dpad_display: bool,
  }
-@@ -53,9 +62,20 @@ impl DeviceInput {
-             let queue = pending.clone();
+ 
+@@ -50,9 +59,20 @@ impl DeviceInput {
+             let steers = stick.clone();
              let name = node.display().to_string();
              let trace = trace.clone();
 +            // The Mini Flip's clamshell sensor is its own evdev node that
@@ -51,24 +51,23 @@ index 3228cdb..602f60f 100644
 +                    .contains("hall");
              let spawned = std::thread::Builder::new()
                  .name(format!("slot-input-{name}"))
--                .spawn(move || read_node(&node, &queue, trace.as_deref()));
-+                .spawn(move || read_node(&node, &queue, trace.as_deref(), hall_node));
+-                .spawn(move || read_node(&node, &queue, &steers, trace.as_deref()));
++                .spawn(move || read_node(&node, &queue, &steers, trace.as_deref(), hall_node));
              if let Err(e) = spawned {
                  eprintln!("slot: input {name}: {e}");
              }
-@@ -64,6 +84,7 @@ impl DeviceInput {
-             pending,
+@@ -62,6 +82,7 @@ impl DeviceInput {
+             stick,
              hall: find_hall(Path::new(PSY)),
              lid_shut: None,
 +            hall_armed: false,
              next_lid_poll: 0,
-             menu_dpad_display,
          }
-@@ -94,7 +115,28 @@ fn quicken_poll(sys: &Path, node: &Path) {
+     }
+@@ -91,12 +112,34 @@ fn quicken_poll(sys: &Path, node: &Path) {
      }
  }
  
--fn read_node(node: &Path, queue: &Mutex<Vec<RawEvent>>, trace: Option<&Trace>) {
 +/// Ask the scheduler to favour this thread.
 +///
 +/// The input readers do almost nothing but block on a read, yet on a two-core
@@ -89,21 +88,27 @@ index 3228cdb..602f60f 100644
 +    }
 +}
 +
-+fn read_node(node: &Path, queue: &Mutex<Vec<RawEvent>>, trace: Option<&Trace>, hall_node: bool) {
+ fn read_node(
+     node: &Path,
+     queue: &Mutex<Vec<RawEvent>>,
+     steers: &AtomicBool,
+     trace: Option<&Trace>,
++    hall_node: bool,
+ ) {
 +    favour_this_thread();
      let label = node
          .file_name()
          .map(|n| n.to_string_lossy().into_owned())
-@@ -128,6 +170,8 @@ fn read_node(node: &Path, queue: &Mutex<Vec<RawEvent>>, trace: Option<&Trace>) {
-             }
-             match ev.kind {
-                 EV_ABS => events.extend(hat.feed(ev)),
+@@ -133,6 +176,8 @@ fn read_node(
+                     hat.steer_with_stick(steers.load(Ordering::Relaxed));
+                     events.extend(hat.feed(ev));
+                 }
 +                // Still traced above, just not acted on. See open_traced.
 +                _ if hall_node => {}
                  _ => events.extend(to_raw(ev)),
              }
          }
-@@ -197,13 +241,8 @@ impl InputSource for DeviceInput {
+@@ -206,13 +251,8 @@ impl InputSource for DeviceInput {
          if self.hall.is_some() && now >= self.next_lid_poll {
              self.next_lid_poll = now + LID_POLL_MS;
              if let Some(shut) = self.read_lid() {
@@ -119,7 +124,7 @@ index 3228cdb..602f60f 100644
                  }
              }
          }
-@@ -215,7 +254,47 @@ impl InputSource for DeviceInput {
+@@ -220,7 +260,47 @@ impl InputSource for DeviceInput {
      }
  }
  
@@ -167,10 +172,15 @@ index 3228cdb..602f60f 100644
      let mut supplies: Vec<PathBuf> = std::fs::read_dir(psy)
          .ok()?
          .filter_map(|e| e.ok())
-@@ -236,6 +315,39 @@ fn menu_dpad_display(target: Option<&str>) -> bool {
- mod tests {
-     use super::*;
- 
+@@ -232,3 +312,41 @@ fn find_hall(psy: &Path) -> Option<PathBuf> {
+         .map(|d| d.join("hallkey"))
+         .find(|p| p.is_file())
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
 +    /// The boot this exists for: the sensor says closed with the lid open,
 +    /// and slot must not doze on it.
 +    #[test]
@@ -203,12 +213,9 @@ index 3228cdb..602f60f 100644
 +            Some(RawEvent::Up(Btn::Lid))
 +        );
 +    }
-+
-     #[test]
-     fn only_the_rg34xx_baseos_target_enables_the_menu_dpad_display_gesture() {
-         for (target, want) in [
++}
 diff --git a/crates/slot/src/input/evdev.rs b/crates/slot/src/input/evdev.rs
-index 02cc4bb..c4de188 100644
+index 7de3178..9e7e0d5 100644
 --- a/crates/slot/src/input/evdev.rs
 +++ b/crates/slot/src/input/evdev.rs
 @@ -2,7 +2,15 @@ use std::path::{Path, PathBuf};
@@ -228,7 +235,7 @@ index 02cc4bb..c4de188 100644
  
  pub const EV_SYN: u16 = 0x00;
  pub const EV_KEY: u16 = 0x01;
-@@ -51,11 +59,19 @@ pub struct Ev {
+@@ -93,11 +101,19 @@ pub struct Ev {
  }
  
  pub fn decode(bytes: &[u8]) -> Option<Ev> {
@@ -252,7 +259,7 @@ index 02cc4bb..c4de188 100644
      })
  }
  
-@@ -72,6 +88,38 @@ pub fn to_raw(ev: Ev) -> Option<RawEvent> {
+@@ -114,6 +130,38 @@ pub fn to_raw(ev: Ev) -> Option<RawEvent> {
      }
  }
  
@@ -291,7 +298,7 @@ index 02cc4bb..c4de188 100644
  pub fn code_to_btn(code: u16) -> Option<Btn> {
      Some(match code {
          0x130 => Btn::A,
-@@ -92,6 +140,15 @@ pub fn code_to_btn(code: u16) -> Option<Btn> {
+@@ -134,6 +182,15 @@ pub fn code_to_btn(code: u16) -> Option<Btn> {
      })
  }
  
@@ -307,7 +314,7 @@ index 02cc4bb..c4de188 100644
  const WANTED: [u16; 15] = [
      0x130, 0x131, 0x132, 0x133, 0x134, 0x135, 0x136, 0x137, 0x138, 0x13a, 0x13b, 0x162, 115, 114,
      116,
-@@ -134,3 +191,44 @@ pub fn device_name(sys: &Path, node: &Path) -> String {
+@@ -176,3 +233,44 @@ pub fn device_name(sys: &Path, node: &Path) -> String {
          .map(|n| n.trim().to_string())
          .unwrap_or_else(|| node.display().to_string())
  }

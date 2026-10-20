@@ -87,7 +87,7 @@ index 664d1ab..059cd0e 100644
      fn drop(&mut self) {
          unsafe {
 diff --git a/crates/slot-gfx/src/lib.rs b/crates/slot-gfx/src/lib.rs
-index 6aa73bf..86365d1 100644
+index fffb534..89e7e86 100644
 --- a/crates/slot-gfx/src/lib.rs
 +++ b/crates/slot-gfx/src/lib.rs
 @@ -1,32 +1,46 @@
@@ -121,7 +121,7 @@ index 6aa73bf..86365d1 100644
 +mod soft;
  mod surface;
  
- pub use bezel::{framed, lifted_rect, screen_rect};
+ pub use bezel::{framed, game_rect, lifted_rect, screen_rect};
  pub use draw::{Draw, TexId};
 +#[cfg(not(feature = "software"))]
  pub use fbdev::{egl_error, panel_mode, panel_size, FbdevSurface};
@@ -134,7 +134,7 @@ index 6aa73bf..86365d1 100644
 -#[cfg(feature = "host")]
 +#[cfg(all(feature = "host", not(feature = "software")))]
  pub use host::HostSurface;
- pub use layout::{Canvas, Layout};
+ pub use layout::Canvas;
  pub use lcd3x::{lcd3x_factors, lcd3x_mask, ScreenEffect};
  pub use pipeline::{SCALE, SRC_H, SRC_W, WHOLE_TEXTURE};
 -pub use power::{screen_brightness, screen_rect_above, screen_scale, screen_width};
@@ -691,10 +691,10 @@ index 0000000..d13f87c
 +}
 diff --git a/crates/slot-gfx/src/soft/mod.rs b/crates/slot-gfx/src/soft/mod.rs
 new file mode 100644
-index 0000000..a2c79d4
+index 0000000..c8640ad
 --- /dev/null
 +++ b/crates/slot-gfx/src/soft/mod.rs
-@@ -0,0 +1,1805 @@
+@@ -0,0 +1,1801 @@
 +//! Software rendering backend, for devices with a framebuffer and no GPU.
 +//!
 +//! `lib.rs` exports this module's `Compositor` and `FbdevSurface` under the
@@ -728,7 +728,6 @@ index 0000000..a2c79d4
 +
 +use crate::draw::{Draw, TexId};
 +use crate::grade::blue_light_gain;
-+use crate::layout::Layout;
 +use crate::lcd3x::ScreenEffect;
 +use crate::pipeline::{SCALE, SRC_H, SRC_W, WHOLE_TEXTURE};
 +use crate::power::{screen_brightness, screen_rect};
@@ -1850,10 +1849,7 @@ index 0000000..a2c79d4
 +        out
 +    }
 +
-+    /// `Layout` is accepted and ignored. Upstream widens its 720x480 canvas
-+    /// towards the panel's shape for `Native`; here the canvas is already the
-+    /// panel, so the two layouts are the same canvas and nothing has to switch.
-+    pub fn begin_frame(&mut self, _layout: Layout) {
++    pub fn begin_frame(&mut self) {
 +        self.game.fbo_scale = [
 +            self.canvas.w as f32 / OUT_W as f32,
 +            self.canvas.h as f32 / OUT_H as f32,
@@ -3423,7 +3419,7 @@ index b3ee812..99480a7 100644
  [dependencies]
  slot-gfx = { path = "../slot-gfx", default-features = false }
 diff --git a/crates/slot/src/device_app.rs b/crates/slot/src/device_app.rs
-index de4cf67..24d8087 100644
+index 0176677..23ca104 100644
 --- a/crates/slot/src/device_app.rs
 +++ b/crates/slot/src/device_app.rs
 @@ -21,8 +21,20 @@ struct Pacer {
@@ -3500,7 +3496,7 @@ index de4cf67..24d8087 100644
          self.works[self.next] = work;
          self.next = (self.next + 1) % WORK_WINDOW;
          self.work = self.works.iter().copied().max().unwrap_or(work);
-@@ -138,7 +177,21 @@ pub fn run() {
+@@ -140,7 +179,21 @@ pub fn run() {
          .name("slot-bootlogo".into())
          .spawn(move || slot::bootlogo::refresh(&card));
      let mut drawn = false;
@@ -3523,7 +3519,7 @@ index de4cf67..24d8087 100644
      let mut pacer = Pacer::new();
      let (mut frames, mut missed, mut early) = (0u32, 0u32, 0u32);
      loop {
-@@ -162,6 +215,15 @@ pub fn run() {
+@@ -168,6 +221,15 @@ pub fn run() {
          }
          let swap_took = swap.elapsed();
          slot::latency::swapped(swap_took.as_secs_f64() * 1000.0);
@@ -3539,7 +3535,7 @@ index de4cf67..24d8087 100644
          let dropped = pacer.swapped(work, swap_took > Duration::from_millis(1));
          if slot::latency::tracing() {
              frames += 1;
-@@ -169,10 +231,12 @@ pub fn run() {
+@@ -175,10 +237,12 @@ pub fn run() {
              early += u32::from(swap_took > pacer.period / 2);
              if frames == 600 {
                  eprintln!(

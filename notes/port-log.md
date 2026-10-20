@@ -19,6 +19,22 @@ cart and shelf art, per-console screen settings and per-platform bezels, on a
 new canvas and layout model. Eighteen patches now, all replayed and all seen
 on the handheld.
 
+**Bumped again on 2026-10-20**, by 18 commits, to `f4b7bc3`: remappable
+controls, a lid watcher and lid power-off timer, run-ahead pulled, the core
+opened off the frame loop, read-only SD repair, and wallpapers and bezels
+sized from the panel. Four patches needed redoing by hand against the new
+code rather than replaying, and one shrank to a third of its size:
+
+| | |
+|---|---|
+| `0003` button codes | upstream added left-stick steering to the reader this patches; the hall-sensor guard and the thread priority now sit alongside it |
+| `0009` picture size | upstream's new tests write 720, 480 and 360 as numbers, so the ones that assume its panel ask `Canvas::FRAMED`/`OUT_W` instead |
+| `0013` bezels | **upstream now does the panel fitting itself**, in `backdrop::panel_bezel` -- same approach, edge rows ping-ponged outward -- so 353 lines of this patch went away and what is left is only not redrawing a bezel that has not changed |
+| `0015` clear carts | upstream added a test asserting the board is its own layer, which is the thing this removes; the assertion is turned around, and `cart.rs` still proves the flattened face |
+| `0017` rewind | run-ahead is gone from `emu.rs`, so the state now comes straight from `core.serialize()` |
+
+Not yet run on the handheld.
+
 **The bump also broke the memory budget**, and fixing that took most of a day
 and is the bulk of what is new here. slot was holding 44 MB before a core was
 even loaded, against about 80 MB the device can give, and a GBA cart was being

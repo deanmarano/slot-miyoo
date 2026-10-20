@@ -28,7 +28,7 @@ have. It costs 56 rows of picture, and was built to be looked at and judged
 rather than argued about.
 
 diff --git a/crates/slot-gfx/src/bezel.rs b/crates/slot-gfx/src/bezel.rs
-index 4592be1..ed527ce 100644
+index bc97590..15fc57e 100644
 --- a/crates/slot-gfx/src/bezel.rs
 +++ b/crates/slot-gfx/src/bezel.rs
 @@ -1,7 +1,19 @@

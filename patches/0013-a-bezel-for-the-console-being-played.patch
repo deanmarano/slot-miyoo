@@ -16,40 +16,28 @@ The canvas path still draws it per frame, as upstream does: a menu is up, the
 canvas covers the panel, and the surround is not in view. Those frames belong
 to a menu rather than to a game.
 
-Two sizes that are the same upstream and differ here:
+A still (`Draw::Shot`, the frame kept behind a menu) is drawn at the whole
+frame, paper and all, so it is not cropped.
 
-  - the art is made at the *picture's* frame, 720x480, not at the canvas,
-    which is the 752x560 panel. The hole has to land on the picture, and
-    `game_bezel_face` scaling it to the canvas put it 39px out on every side.
-  - a still (`Draw::Shot`, the frame kept behind a menu) is drawn at the whole
-    frame, paper and all, so it is not cropped.
-
-`the_picture_fills_the_hole_in_the_art` pins the two together: the hole is
+`the_picture_fills_the_hole_in_the_art` pins the crop to the art: the hole is
 measured off bezel_gb.png and the crop is arithmetic, and nothing lines them
 up at run time.
 
-The bezel fills the panel rather than the picture's frame. The art is 720x480
--- the frame exactly -- which left 16px of bare panel down each side and 40
-top and bottom, read on the handheld as a black border around the console
-body. Scaling the art up would blur a texture, distort the lamps and
-lettering, and carry the hole off the picture it exists to frame, so instead
-the art is placed untouched at (16, 40) and the margin is filled with more of
-the plastic already at each edge, mirrored outward.
+This patch used to carry the other half of the problem too -- growing a
+720x480 bezel to a 752x560 panel by extending the plastic at its edges rather
+than stretching the art, so the hole stays on the picture. Upstream has since
+done that itself, in `backdrop::panel_bezel` (ee19b7a), sized from the panel
+and ping-ponging the edge rows outward exactly as this did. That code is gone
+from here and what remains is only the part that is about this backend: not
+redrawing what has not changed.
 
-Which plastic is found rather than assumed, since a user's own bezel will not
-be built like these two: lines are taken from the edge while each stays within
-1% of the one before it. Comparing against the outermost line instead measures
-the art's own gentle shading -- the columns brighten 1.6% inwards -- and stops
-the band in the middle of flat plastic; and a looser rule took the frame's
-highlight row, 3.9% brighter than plastic, and mirrored it across the margin
-as a visible line. Both of those were found by rendering a frame and reading
-the row means out of it, which is also what the test does.
+Applies to upstream f4b7bc3.
 
 diff --git a/crates/slot-gfx/src/soft/mod.rs b/crates/slot-gfx/src/soft/mod.rs
-index a2c79d4..b527104 100644
+index c8640ad..da0f29e 100644
 --- a/crates/slot-gfx/src/soft/mod.rs
 +++ b/crates/slot-gfx/src/soft/mod.rs
-@@ -224,6 +224,10 @@ struct Game {
+@@ -223,6 +223,10 @@ struct Game {
      /// A strip along the bottom of the canvas the picture keeps clear of: the
      /// carousel footer, which the pause and quick menus share.
      bottom: f32,
@@ -60,7 +48,7 @@ index a2c79d4..b527104 100644
      fbo_scale: [f32; 2],
      /// Scratch that would otherwise be heap-allocated twice a frame. Two
      /// allocations per frame is a poor way to spend a 16 ms budget, and the
-@@ -243,6 +247,7 @@ impl Game {
+@@ -242,6 +246,7 @@ impl Game {
              src: WHOLE_TEXTURE,
              base: crate::power::PICTURE,
              bottom: 0.0,
@@ -68,7 +56,7 @@ index a2c79d4..b527104 100644
              fbo_scale: [1.0, 1.0],
              col: Vec::new(),
              col_key: None,
-@@ -285,21 +290,51 @@ impl Game {
+@@ -284,21 +289,51 @@ impl Game {
      /// canvas -- 720x480 in 752x560 -- so there is nothing of it under the
      /// footer to lose: it only moves up, and keeps all of itself.
      fn rect(&self) -> (f32, f32, f32, f32) {
@@ -123,7 +111,7 @@ index a2c79d4..b527104 100644
          };
          let (sw, sh) = (img.w as f32, img.h as f32);
  
-@@ -729,6 +764,10 @@ pub struct Compositor {
+@@ -728,6 +763,10 @@ pub struct Compositor {
      /// The bezel that belongs to the console being played, drawn in the band
      /// of canvas the picture does not reach: `App::shown_game_bezel`.
      game_bezel: Option<TexId>,
@@ -134,7 +122,7 @@ index a2c79d4..b527104 100644
      /// Whether the bezel belongs under what is playing. The art is a Game Boy
      /// Advance SP shell and says so in large letters, which is wrong under a
      /// Game Boy game; `App::bezel_suits_platform` decides and says so here.
-@@ -760,6 +799,7 @@ impl Compositor {
+@@ -759,6 +798,7 @@ impl Compositor {
              screen: 0.0,
              bezel: None,
              game_bezel: None,
@@ -142,7 +130,7 @@ index a2c79d4..b527104 100644
              bezel_shown: true,
              turn: None,
          };
-@@ -805,7 +845,7 @@ impl Compositor {
+@@ -804,7 +844,7 @@ impl Compositor {
          }
          self.pending_clear = false;
          let covered = matches!(items.first(), Some(Draw::Game)) && {
@@ -151,7 +139,7 @@ index a2c79d4..b527104 100644
              x <= 0.0 && y <= 0.0 && w >= self.canvas.w as f32 && h >= self.canvas.h as f32
          };
          if covered {
-@@ -868,6 +908,7 @@ impl Compositor {
+@@ -867,6 +907,7 @@ impl Compositor {
                          }
                          self.profile.path = path;
                      }
@@ -159,7 +147,7 @@ index a2c79d4..b527104 100644
                  }
                  Draw::Shot { tex } => {
                      self.draw_sprites(&items[from..i]);
-@@ -885,6 +926,34 @@ impl Compositor {
+@@ -884,6 +925,34 @@ impl Compositor {
          self.draw_sprites(&items[from..]);
      }
  
@@ -173,8 +161,8 @@ index a2c79d4..b527104 100644
 +            return;
 +        };
 +        // The whole canvas: the face is panel sized, with the art at the
-+        // picture's frame inside it and plastic filling the rest. See
-+        // `slot_ui::GAME_BEZEL`.
++        // picture's frame inside it and plastic filling the rest. Upstream's
++        // `panel_bezel` builds it that way now; this just draws it.
 +        let (x, y, w, h) = (0.0, 0.0, OUT_W as f32, OUT_H as f32);
 +        raster::blit(
 +            &mut self.canvas,
@@ -194,7 +182,7 @@ index a2c79d4..b527104 100644
      fn take_image(&mut self, id: TexId) -> Option<Image> {
          self.textures.get_mut(id.raw())?.take().map(|t: Tex| t.img)
      }
-@@ -1176,6 +1245,7 @@ impl Compositor {
+@@ -1172,6 +1241,7 @@ impl Compositor {
              return;
          }
          self.bezel_shown = shown;
@@ -202,7 +190,7 @@ index a2c79d4..b527104 100644
          // The surround is painted only when the output rect moves, so without
          // this the answer that was on the panel stays there -- the shell would
          // survive into the next Game Boy game until something else happened to
-@@ -1188,6 +1258,8 @@ impl Compositor {
+@@ -1184,6 +1254,8 @@ impl Compositor {
              return;
          }
          self.game_bezel = tex;
@@ -211,7 +199,7 @@ index a2c79d4..b527104 100644
          // Painted with the surround rather than per frame, so the panel has to
          // be told to repaint: see `output_frame`.
          self.clear_left = PAGES;
-@@ -1195,8 +1267,64 @@ impl Compositor {
+@@ -1191,8 +1263,64 @@ impl Compositor {
  
      pub fn set_bezel(&mut self, w: u32, h: u32, rgba: &[u8]) {
          // Stored top-down, unlike the GL path which pre-flips for its FBO.
@@ -277,7 +265,7 @@ index a2c79d4..b527104 100644
      }
  
      /// Scale the canvas onto the panel and hand it to the framebuffer.
-@@ -1241,7 +1369,7 @@ impl Compositor {
+@@ -1237,7 +1365,7 @@ impl Compositor {
          // The game's own rect when it goes straight out, since that is what
          // actually gets written; otherwise the canvas blit's.
          let rect = if self.direct_game {
@@ -286,7 +274,7 @@ index a2c79d4..b527104 100644
              (x + gx as i32, y + gy as i32, gw as i32, gh as i32)
          } else {
              (x, y, w, h)
-@@ -1262,11 +1390,7 @@ impl Compositor {
+@@ -1258,11 +1386,7 @@ impl Compositor {
              // Only when it is exactly panel-sized. `bezel_face` scales the art
              // to the panel before it gets here, so a mismatch means something
              // changed underneath us and black is the safe answer.
@@ -299,7 +287,7 @@ index a2c79d4..b527104 100644
              let bw = bezel.map_or(0, |b| b.w as usize * 4);
              for py in 0..ph {
                  // SAFETY: one row inside the mapping.
-@@ -1803,3 +1927,80 @@ mod direct_path_tests {
+@@ -1799,3 +1923,80 @@ mod direct_path_tests {
          let _ = Dest::Canvas(&mut canvas);
      }
  }
@@ -392,339 +380,3 @@ index ab1d54f..2b2107e 100644
  pub struct Image {
      pub w: u32,
      pub h: u32,
-diff --git a/crates/slot-ui/src/backdrop.rs b/crates/slot-ui/src/backdrop.rs
-index 7fd980a..63c00fd 100644
---- a/crates/slot-ui/src/backdrop.rs
-+++ b/crates/slot-ui/src/backdrop.rs
-@@ -1,7 +1,7 @@
- use std::path::Path;
- use std::sync::OnceLock;
- 
--use slot_gfx::{Canvas, Draw, TexId, OUT_H, OUT_W};
-+use slot_gfx::{Canvas, Draw, TexId, OUT_H, OUT_W, PICTURE};
- 
- use crate::art;
- 
-@@ -20,13 +20,144 @@ pub fn bezel_face(path: &Path, w: u32, h: u32) -> Option<Vec<u8>> {
-     art::cover(path, w, h)
- }
- 
-+/// A console's own bezel is the size of the *picture's* frame, not of the
-+/// canvas. Upstream's two are the same 720x480; here the canvas is the
-+/// 752x560 panel and the frame is still 720x480, and it is the frame the art
-+/// is drawn around -- its hole has to land on the picture.
-+pub const GAME_BEZEL: (u32, u32) = (OUT_W, OUT_H);
-+
-+/// Where the art itself goes inside that: the picture's frame, centred.
-+const BEZEL_ART: (u32, u32) = (PICTURE[0] as u32, PICTURE[1] as u32);
-+
- pub fn game_bezel_face(path: &Path) -> Option<Vec<u8>> {
--    art::cover(path, OUT_W, OUT_H)
-+    art::cover(path, BEZEL_ART.0, BEZEL_ART.1).map(|rgba| fill_panel(&rgba))
- }
- 
- pub fn default_game_bezel_face(colour: bool) -> Option<Vec<u8>> {
-     let png = if colour { BEZEL_GBC_PNG } else { BEZEL_GB_PNG };
--    art::cover_bytes(png, OUT_W, OUT_H)
-+    art::cover_bytes(png, BEZEL_ART.0, BEZEL_ART.1).map(|rgba| fill_panel(&rgba))
-+}
-+
-+/// Grow a bezel from the picture's frame to the whole panel, by extending the
-+/// plastic rather than stretching the art.
-+///
-+/// The art is 720x480, the picture's frame, and the panel is 752x560 -- 16px
-+/// of bare panel down each side and 40 top and bottom, which read as a black
-+/// border around the console body. Scaling the art to the panel would blur a
-+/// texture, distort the lamps and lettering, and move the hole off the picture
-+/// it has to frame. Nothing about the art is touched here: it is placed at
-+/// (16, 40), where its hole still lands exactly on the picture, and the margin
-+/// is filled with more of the plastic that is already at each edge.
-+///
-+/// The band to take that plastic from is found rather than assumed, because
-+/// the frame starts 14 rows in on these two and a user's own bezel will differ:
-+/// rows are taken from the edge while they stay as flat as the outermost one,
-+/// and the margin is filled by reflecting that band back and forth. A mirror
-+/// rather than a repeat, so the seams fall on matching pixels.
-+fn fill_panel(art: &[u8]) -> Vec<u8> {
-+    let (aw, ah) = (BEZEL_ART.0 as usize, BEZEL_ART.1 as usize);
-+    let (pw, ph) = (OUT_W as usize, OUT_H as usize);
-+    if art.len() < aw * ah * 4 || pw < aw || ph < ah {
-+        return art.to_vec();
-+    }
-+    let (ox, oy) = ((pw - aw) / 2, (ph - ah) / 2);
-+    let mut out = vec![0u8; pw * ph * 4];
-+
-+    // The art, untouched, in the middle.
-+    for y in 0..ah {
-+        let from = y * aw * 4;
-+        let to = ((y + oy) * pw + ox) * 4;
-+        out[to..to + aw * 4].copy_from_slice(&art[from..from + aw * 4]);
-+    }
-+
-+    // Sideways first, over the art's own rows, then down and up over the
-+    // whole width -- so the corners come from plastic that is already there.
-+    let band_x = plain_band(art, aw, ah, Axis::Column).min(ox.max(1));
-+    for y in 0..ah {
-+        let row = (y + oy) * pw * 4;
-+        for x in 0..ox {
-+            let src = ox + mirror(ox - 1 - x, band_x);
-+            let (d, s) = ((row + x * 4), (row + src * 4));
-+            out.copy_within(s..s + 4, d);
-+            let (d, s) = (
-+                (row + (pw - 1 - x) * 4),
-+                (row + (pw - 1 - ox - mirror(ox - 1 - x, band_x)) * 4),
-+            );
-+            out.copy_within(s..s + 4, d);
-+        }
-+    }
-+    let band_y = plain_band(art, aw, ah, Axis::Row).min(oy.max(1));
-+    for y in 0..oy {
-+        let top_src = (oy + mirror(oy - 1 - y, band_y)) * pw * 4;
-+        let top_dst = y * pw * 4;
-+        out.copy_within(top_src..top_src + pw * 4, top_dst);
-+        let bot_src = (ph - 1 - oy - mirror(oy - 1 - y, band_y)) * pw * 4;
-+        let bot_dst = (ph - 1 - y) * pw * 4;
-+        out.copy_within(bot_src..bot_src + pw * 4, bot_dst);
-+    }
-+    out
-+}
-+
-+enum Axis {
-+    Row,
-+    Column,
-+}
-+
-+/// Ping-pong an index into a band: 0, 1, .. n-1, n-1, .. 1, 0, 0, ..
-+fn mirror(i: usize, band: usize) -> usize {
-+    let band = band.max(1);
-+    let period = band * 2;
-+    let at = i % period;
-+    match at < band {
-+        true => at,
-+        false => period - 1 - at,
-+    }
-+}
-+
-+/// How many rows (or columns) at the edge are as flat as the outermost one.
-+///
-+/// Each line is compared with the one before it, not with the outermost one.
-+/// The plastic is subtly lit across the art -- the columns brighten by 1.6%
-+/// from the left edge inwards -- so measuring against line 0 measures that
-+/// gradient and stops the band in the middle of flat plastic. A gradient
-+/// steps gently and an edge jumps: 1% of the plastic's own brightness tells
-+/// them apart, and the spread test catches a change of texture the brightness
-+/// alone would miss.
-+///
-+/// Both halves were found by rendering it: a looser rule took the frame's
-+/// highlight row (3.9% brighter than plastic) and mirrored it across the
-+/// margin as a visible line at y=24, and a mean-against-line-0 rule left the
-+/// Game Boy Color's sides too thin to fill their own margin.
-+fn plain_band(art: &[u8], aw: usize, ah: usize, axis: Axis) -> usize {
-+    let len = match axis {
-+        Axis::Row => ah,
-+        Axis::Column => aw,
-+    };
-+    let stat = |i: usize| -> (f32, f32) {
-+        let n = match axis {
-+            Axis::Row => aw,
-+            Axis::Column => ah,
-+        };
-+        let at = |k: usize| match axis {
-+            Axis::Row => (i * aw + k) * 4,
-+            Axis::Column => (k * aw + i) * 4,
-+        };
-+        let lum = |p: usize| (art[p] as f32 + art[p + 1] as f32 + art[p + 2] as f32) / 3.0;
-+        let mean = (0..n).map(|k| lum(at(k))).sum::<f32>() / n as f32;
-+        let var = (0..n).map(|k| (lum(at(k)) - mean).powi(2)).sum::<f32>() / n as f32;
-+        (mean, var.sqrt())
-+    };
-+    let (mean0, sd0) = stat(0);
-+    let (mut prev, mut band) = (mean0, 1);
-+    while band < len {
-+        let (mean, sd) = stat(band);
-+        if (mean - prev).abs() > mean0 * 0.01 || sd > sd0 * 1.5 + 0.5 {
-+            break;
-+        }
-+        prev = mean;
-+        band += 1;
-+    }
-+    band
- }
- 
- /// The carousel ground, scaled to cover the whole screen, including behind the footer.
-@@ -75,3 +206,141 @@ fn ground(canvas: Canvas, tex: TexId) -> Draw {
-         uv: canvas.window(OUT_W as f32),
-     }
- }
-+
-+#[cfg(test)]
-+mod fill_panel_tests {
-+    use super::*;
-+
-+    /// A stand-in bezel: plain "plastic" at the edges, a loud band inside it
-+    /// where the screen frame would be, so the band finder has something to
-+    /// stop at.
-+    fn art() -> Vec<u8> {
-+        let (w, h) = (BEZEL_ART.0 as usize, BEZEL_ART.1 as usize);
-+        let mut px = vec![0u8; w * h * 4];
-+        for y in 0..h {
-+            for x in 0..w {
-+                let frame = y >= 14 && y < h - 14 && x >= 14 && x < w - 14;
-+                let v = match frame {
-+                    // Loud and varying, like the frame and the picture hole.
-+                    true => ((x * 7 + y * 13) % 256) as u8,
-+                    // Plastic: flat, with a pixel of noise.
-+                    false => 108 + ((x + y) % 3) as u8,
-+                };
-+                let p = (y * w + x) * 4;
-+                px[p..p + 4].copy_from_slice(&[v, v, v, 255]);
-+            }
-+        }
-+        px
-+    }
-+
-+    fn at(px: &[u8], w: usize, x: usize, y: usize) -> [u8; 4] {
-+        let p = (y * w + x) * 4;
-+        [px[p], px[p + 1], px[p + 2], px[p + 3]]
-+    }
-+
-+    #[test]
-+    fn the_art_is_placed_untouched_and_the_panel_is_filled() {
-+        let src = art();
-+        let out = fill_panel(&src);
-+        let (aw, ah) = (BEZEL_ART.0 as usize, BEZEL_ART.1 as usize);
-+        let (pw, ph) = (OUT_W as usize, OUT_H as usize);
-+        assert_eq!(out.len(), pw * ph * 4);
-+
-+        let (ox, oy) = ((pw - aw) / 2, (ph - ah) / 2);
-+        for (x, y) in [(0, 0), (aw / 2, ah / 2), (aw - 1, ah - 1), (121, 27)] {
-+            assert_eq!(
-+                at(&out, pw, x + ox, y + oy),
-+                at(&src, aw, x, y),
-+                "the art moved or was resampled at {x},{y}"
-+            );
-+        }
-+        assert!(
-+            out.chunks_exact(4).all(|p| p[3] == 255),
-+            "the filled margin left transparent pixels"
-+        );
-+    }
-+
-+    /// The margin has to come from the plastic at the edge, not from the
-+    /// frame a few rows in: reflecting the whole pad depth would drag the
-+    /// screen's own border out into the bezel.
-+    #[test]
-+    fn the_margin_is_plastic_rather_than_the_frame() {
-+        let src = art();
-+        let out = fill_panel(&src);
-+        let (pw, ph) = (OUT_W as usize, OUT_H as usize);
-+        for (x, y) in [
-+            (pw / 2, 0),
-+            (pw / 2, 5),
-+            (pw / 2, ph - 1),
-+            (0, ph / 2),
-+            (pw - 1, ph / 2),
-+        ] {
-+            let v = at(&out, pw, x, y)[0];
-+            assert!(
-+                (107..=111).contains(&v),
-+                "margin pixel at {x},{y} is {v}, which is not the plastic"
-+            );
-+        }
-+    }
-+
-+    /// Against the art that actually ships, and testing the thing that went
-+    /// wrong rather than the mechanism that went wrong.
-+    ///
-+    /// The first version of the band finder took the frame's highlight row --
-+    /// 3.9% brighter than the plastic -- and mirrored it across the margin as
-+    /// a line, which only showed up by rendering a frame and reading the row
-+    /// means out of it. So: fill both real bezels and insist every line of the
-+    /// margin sits within 3% of the plastic it is supposed to be made of. The
-+    /// two bezels stop their bands in different places (13 rows and 9), which
-+    /// is why this asks about the result and not the number.
-+    #[test]
-+    fn the_real_bezels_fill_with_plastic_and_no_seam() {
-+        let (aw, ah) = (BEZEL_ART.0 as usize, BEZEL_ART.1 as usize);
-+        let (pw, ph) = (OUT_W as usize, OUT_H as usize);
-+        let (ox, oy) = ((pw - aw) / 2, (ph - ah) / 2);
-+        let lum = |px: &[u8], w: usize, x: usize, y: usize| {
-+            let p = (y * w + x) * 4;
-+            (px[p] as f32 + px[p + 1] as f32 + px[p + 2] as f32) / 3.0
-+        };
-+        for (name, png) in [("gb", BEZEL_GB_PNG), ("gbc", BEZEL_GBC_PNG)] {
-+            let art = art::cover_bytes(png, BEZEL_ART.0, BEZEL_ART.1).expect("decode");
-+            let out = fill_panel(&art);
-+            // The plastic, measured where the art says it is.
-+            let want = (0..aw).map(|x| lum(&art, aw, x, 0)).sum::<f32>() / aw as f32;
-+            let row_mean = |y: usize| (0..pw).map(|x| lum(&out, pw, x, y)).sum::<f32>() / pw as f32;
-+            for y in (0..oy).chain(ph - oy..ph) {
-+                let got = row_mean(y);
-+                assert!(
-+                    (got - want).abs() < want * 0.03,
-+                    "{name}: margin row {y} is {got:.1} against plastic at {want:.1}"
-+                );
-+            }
-+            // And the sides, over the art's own rows.
-+            for x in (0..ox).chain(pw - ox..pw) {
-+                let got = (oy..ph - oy).map(|y| lum(&out, pw, x, y)).sum::<f32>() / (ah) as f32;
-+                assert!(
-+                    (got - want).abs() < want * 0.06,
-+                    "{name}: margin column {x} is {got:.1} against plastic at {want:.1}"
-+                );
-+            }
-+        }
-+    }
-+
-+    #[test]
-+    fn a_band_stops_where_the_art_stops_being_flat() {
-+        let src = art();
-+        let (aw, ah) = (BEZEL_ART.0 as usize, BEZEL_ART.1 as usize);
-+        assert_eq!(
-+            plain_band(&src, aw, ah, Axis::Row),
-+            14,
-+            "the row band should stop at the frame"
-+        );
-+    }
-+
-+    /// Ping-pong, so a margin deeper than the band has no hard seam.
-+    #[test]
-+    fn the_mirror_turns_round_at_the_band() {
-+        let got: Vec<usize> = (0..8).map(|i| mirror(i, 3)).collect();
-+        assert_eq!(got, vec![0, 1, 2, 2, 1, 0, 0, 1]);
-+    }
-+}
-diff --git a/crates/slot-ui/src/lib.rs b/crates/slot-ui/src/lib.rs
-index 8d625ef..fd61536 100644
---- a/crates/slot-ui/src/lib.rs
-+++ b/crates/slot-ui/src/lib.rs
-@@ -32,7 +32,7 @@ mod toast;
- 
- pub use backdrop::{
-     bezel_face, blur_background, default_background, default_game_bezel_face, draw_backdrop,
--    draw_ground, game_bezel_face, wallpaper_face,
-+    draw_ground, game_bezel_face, wallpaper_face, GAME_BEZEL,
- };
- pub use barcode::{code39, CODE39_NARROW, CODE39_WIDE};
- pub use battery::{draw_gauge, BOLT_PX, GAUGE_H, GAUGE_W, WALL};
-diff --git a/crates/slot/src/frontend.rs b/crates/slot/src/frontend.rs
-index 5188926..b780eb3 100644
---- a/crates/slot/src/frontend.rs
-+++ b/crates/slot/src/frontend.rs
-@@ -945,13 +945,14 @@ fn sync_game_bezel(app: &mut App, compositor: &mut Compositor, state: &mut Bezel
-                 })
-                 .and_then(|path| game_bezel_face(&path)),
-         };
-+        let (bw, bh) = slot_ui::GAME_BEZEL;
-         let tex = rgba.map(|rgba| match state.tex {
-             Some(id) => {
--                compositor.update_texture(id, OUT_W, OUT_H, &rgba);
-+                compositor.update_texture(id, bw, bh, &rgba);
-                 id
-             }
-             None => {
--                let id = compositor.create_texture(OUT_W, OUT_H, &rgba);
-+                let id = compositor.create_texture(bw, bh, &rgba);
-                 state.tex = Some(id);
-                 id
-             }

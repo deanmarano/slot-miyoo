@@ -34,6 +34,13 @@ header says so and why it was looked at on the handheld before being kept.
 independently and checks the flattened face against them; the shelf keeps the
 three-draw path for any cart that still has an interior of its own.
 
+Upstream added `a_clear_cart_is_drawn_over_its_board_and_a_solid_one_is_not`
+after this was written, which asserts the board arrives as its own layer. That
+is exactly what this stops doing, so the assertion is turned around here: the
+board must *not* be drawn separately, because the face already carries it.
+`cart.rs` is the test that says the flattened face is right, by compositing
+the three layers independently and comparing.
+
 diff --git a/crates/slot-ui/src/cart.rs b/crates/slot-ui/src/cart.rs
 index 582cc4f..a461198 100644
 --- a/crates/slot-ui/src/cart.rs
@@ -108,7 +115,7 @@ index 582cc4f..a461198 100644
      let (_, _, lw, lh) = spec(shape_of(cart)).label;
      (lw, lh)
 diff --git a/crates/slot-ui/src/lib.rs b/crates/slot-ui/src/lib.rs
-index b541d6f..b1a0ec3 100644
+index 52837b3..e916008 100644
 --- a/crates/slot-ui/src/lib.rs
 +++ b/crates/slot-ui/src/lib.rs
 @@ -44,11 +44,11 @@ pub use board::{
@@ -127,7 +134,7 @@ index b541d6f..b1a0ec3 100644
 +    GB_LABEL_H, GB_LABEL_W, GB_LABEL_X, GB_LABEL_Y, LABEL_H, LABEL_W, LABEL_WELL, LABEL_X, LABEL_Y,
  };
  pub use clock::{clock_label, date_time_text, hhmm, set_clock_hint_face, ClockPicker, Field};
- pub use draw::{Canvas, Draw, Layout, TexId, OUT_H, OUT_W};
+ pub use draw::{Canvas, Draw, TexId, OUT_H, OUT_W};
 diff --git a/crates/slot-ui/src/shelf.rs b/crates/slot-ui/src/shelf.rs
 index 7174897..7557427 100644
 --- a/crates/slot-ui/src/shelf.rs
@@ -232,6 +239,33 @@ index 54d7d43..83d1442 100644
 +    let stack = slot_ui::cart_stack(cart, cart_face(cart));
 +    assert_eq!(stack.rgba, face.rgba);
 +}
+diff --git a/crates/slot-ui/tests/shelf.rs b/crates/slot-ui/tests/shelf.rs
+index a6590a9..9b59ab9 100644
+--- a/crates/slot-ui/tests/shelf.rs
++++ b/crates/slot-ui/tests/shelf.rs
+@@ -992,10 +992,18 @@ fn a_clear_cart_is_drawn_over_its_board_and_a_solid_one_is_not() {
+             out.iter()
+                 .position(|d| matches!(*d, Draw::Tex { tex, .. } if tex == t))
+         };
+-        assert_eq!(at(board).is_some(), clear, "{code}: board layer");
+-        if clear {
+-            assert!(at(board) < at(face), "the board was drawn over the plastic");
+-        }
++        // Upstream draws a clear cart's board as its own layer under the
++        // plastic. Here `cart_stack` has already composited it into the face
++        // on the worker thread -- 13 ms a cart against 1.9 on this panel -- so
++        // neither kind of cart sends the board separately, and the ordering
++        // this used to check is baked into the face. `cart.rs` checks the
++        // flattened face against the three layers drawn independently.
++        let _ = clear;
++        assert!(
++            at(board).is_none(),
++            "{code}: the board should be composited into the face, not drawn"
++        );
++        assert!(at(face).is_some(), "{code}: the cart face was not drawn");
+     }
+ }
+ 
 diff --git a/crates/slot/src/cart_faces.rs b/crates/slot/src/cart_faces.rs
 index 3cdd5a0..ea0b3d5 100644
 --- a/crates/slot/src/cart_faces.rs

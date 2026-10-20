@@ -35,10 +35,10 @@ Dean chose this over capping the budget alone, which would have left the
 removing it.
 
 diff --git a/crates/slot/src/emu.rs b/crates/slot/src/emu.rs
-index 250a62f..6f2608e 100644
+index 70cd90f..87b3b5f 100644
 --- a/crates/slot/src/emu.rs
 +++ b/crates/slot/src/emu.rs
-@@ -576,6 +576,12 @@ impl Worker {
+@@ -563,6 +563,12 @@ impl Worker {
          let mut out = Vec::new();
          let mut gated = (false, false);
          let rewind = RewindThread::spawn(REWIND_BYTES);
@@ -51,18 +51,14 @@ index 250a62f..6f2608e 100644
          let mut since_snapshot = 0;
          let mut cost = FrameCost::seed();
          let mut post_cost = PRESENT - FAST_TARGET;
-@@ -828,13 +834,25 @@ impl Worker {
+@@ -793,9 +799,21 @@ impl Worker {
                  {
                      since_snapshot = 0;
                  }
 -                if since_snapshot >= SNAPSHOT_EVERY {
 +                if since_snapshot >= snapshot_every {
                      since_snapshot = 0;
-                     let state = match shown {
-                         true => Ok(std::mem::take(&mut runahead.state)),
-                         false => core.serialize(),
-                     };
-                     if let Ok(state) = state {
+                     if let Ok(state) = core.serialize() {
 +                        if !planned {
 +                            planned = true;
 +                            let plan = crate::rewind::plan(state.len());

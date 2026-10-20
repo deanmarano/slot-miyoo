@@ -34,10 +34,10 @@ unimported for the test module when 0009 dropped it from the file's own uses,
 and nothing compiled the test binary until this patch added a test to it.
 
 diff --git a/crates/slot-ui/src/lib.rs b/crates/slot-ui/src/lib.rs
-index fd61536..b541d6f 100644
+index df8bfc3..52837b3 100644
 --- a/crates/slot-ui/src/lib.rs
 +++ b/crates/slot-ui/src/lib.rs
-@@ -78,7 +78,7 @@ pub use quick_menu::{
+@@ -80,7 +80,7 @@ pub use quick_menu::{
  };
  pub use rebuild::{rebuild_count_face, rebuild_title_face, RebuildScreen};
  pub use refusal::Refusal;
@@ -62,7 +62,7 @@ index 31cc357..7174897 100644
  
  const SLOTS: i32 = 3;
 diff --git a/crates/slot/src/frontend.rs b/crates/slot/src/frontend.rs
-index b780eb3..f519f3e 100644
+index 8f77d6b..c40019f 100644
 --- a/crates/slot/src/frontend.rs
 +++ b/crates/slot/src/frontend.rs
 @@ -3,6 +3,26 @@ use std::time::{Duration, Instant};
@@ -92,16 +92,16 @@ index b780eb3..f519f3e 100644
  use slot_input::{InputSource, Millis};
  use slot_power::{Platform, Power};
  use slot_store::{format_stamp, BezelPick, Platform as Console};
-@@ -683,7 +703,7 @@ impl Frontend {
-         self.session
-             .set_menu_dpad_display(input.menu_dpad_display());
+@@ -706,7 +726,7 @@ impl Frontend {
+             return;
+         }
          self.session.feed(events, now);
 -        let dt = self.last.elapsed().as_secs_f32();
 +        let dt = self.last.elapsed().as_secs_f32().min(MAX_DT);
          self.last = Instant::now();
          self.session.update(dt);
      }
-@@ -1165,3 +1185,32 @@ fn upload_rgba(
+@@ -1247,3 +1267,32 @@ fn upload_rgba(
          }
      }
  }

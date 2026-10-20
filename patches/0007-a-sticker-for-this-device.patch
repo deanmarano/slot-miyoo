@@ -24,7 +24,7 @@ panel at the body size.
 This changes what the frontend says about itself rather than how it behaves.
 It is a UX change, deliberately, and it is scoped to the sticker.
 
-Applies to upstream 94a35a0.
+Applies to upstream f4b7bc3.
 
 diff --git a/crates/slot-ui/assets/wordmark.svg b/crates/slot-ui/assets/wordmark.svg
 index af98906..cf3a6a1 100644
@@ -91,10 +91,10 @@ index af98906..cf3a6a1 100644
    </g>
  </svg>
 diff --git a/crates/slot-ui/src/sticker.rs b/crates/slot-ui/src/sticker.rs
-index 7f8c77c..0c09872 100644
+index ec44b7d..d9e428c 100644
 --- a/crates/slot-ui/src/sticker.rs
 +++ b/crates/slot-ui/src/sticker.rs
-@@ -28,6 +28,9 @@ const HEAD_PX: f32 = 11.0;
+@@ -28,35 +28,41 @@ const HEAD_PX: f32 = 11.0;
  const BODY_PX: f32 = 8.5;
  const SERIAL_PX: f32 = 26.0;
  const SMALL_PX: f32 = 9.0;
@@ -104,8 +104,7 @@ index 7f8c77c..0c09872 100644
  
  pub struct StickerFields<'a> {
      pub battery: Option<u8>,
-@@ -35,29 +38,32 @@ pub struct StickerFields<'a> {
-     pub dirty_digit: char,
+     pub serial: &'a str,
  }
  
 -pub const CREDITS: [&str; 11] = [
@@ -115,19 +114,17 @@ index 7f8c77c..0c09872 100644
      "EMULATION POWERED BY MGBA",
 -    "AND GPSP. UNDERLYING OS IS",
 -    "BASEOS BY PVAIBHAV. TYPE IS",
--    "OPEN SANS AND NERD FONTS",
--    "SYMBOLS BY RYAN L MCINTYRE.",
--    "THE PANEL MASK IS DERIVED",
--    "FROM GIGAHERZ'S LCD3X. THE",
--    "CART SOUNDS ARE MY CHILDHOOD",
--    "GAMEBOY.",
 +    "AND GPSP. THE FRONTEND IS",
 +    "SLOT, BY BRANDON KOWALSKI,",
 +    "FOR THE ANBERNIC RG SP; THIS",
 +    "IS AN UNOFFICIAL PORT TO",
 +    "MIYOO'S OWN OS. TYPE IS",
-+    "OPEN SANS AND NERD FONTS",
-+    "SYMBOLS BY RYAN L MCINTYRE.",
+     "OPEN SANS AND NERD FONTS",
+     "SYMBOLS BY RYAN L MCINTYRE.",
+-    "THE PANEL MASK IS DERIVED",
+-    "FROM GIGAHERZ'S LCD3X. THE",
+-    "CART SOUNDS ARE MY CHILDHOOD",
+-    "GAMEBOY.",
 +    "THE PANEL MASK IS",
 +    "GIGAHERZ'S LCD3X.",
  ];
@@ -148,15 +145,15 @@ index 7f8c77c..0c09872 100644
          format!("INPUT : 5V{DC}1.5A"),
          match f.battery {
              Some(p) => format!("BATTERY : LI-ION ({p}%)"),
-@@ -72,6 +78,7 @@ pub fn sticker_lines(f: &StickerFields) -> Vec<String> {
-     out.extend(ORIGIN.iter().map(|s| s.to_string()));
-     out.push(format!("{} {}", f.serial, f.dirty_digit));
+@@ -77,6 +83,7 @@ pub fn sticker_lines(f: &StickerFields) -> Vec<String> {
+     let (body, check) = split_check(f.serial);
+     out.push(format!("{body} {check}"));
      out.push(COPYRIGHT.to_string());
 +    out.push(PORT.to_string());
      out.push(HOME.to_string());
      out
  }
-@@ -231,9 +238,9 @@ pub fn sticker_face(f: &StickerFields) -> UndoFace {
+@@ -236,9 +243,9 @@ pub fn sticker_face(f: &StickerFields) -> UndoFace {
      }
      y += 3.0;
      let col_right = panel_x as f32 - MARGIN;
@@ -169,7 +166,7 @@ index 7f8c77c..0c09872 100644
  
      let bars_y = panel_y + 14;
      let bars_h = 62;
-@@ -291,7 +298,7 @@ pub fn sticker_face(f: &StickerFields) -> UndoFace {
+@@ -306,7 +313,7 @@ pub fn sticker_face(f: &StickerFields) -> UndoFace {
          );
          ry += mh as f32 + 4.0;
      }
@@ -179,10 +176,10 @@ index 7f8c77c..0c09872 100644
          ry = c.print(right_edge - lw - 10.0, ry, line, SMALL_PX, WHITE);
      }
 diff --git a/crates/slot-ui/tests/sticker.rs b/crates/slot-ui/tests/sticker.rs
-index de52e54..96c106c 100644
+index fea4740..5bd5866 100644
 --- a/crates/slot-ui/tests/sticker.rs
 +++ b/crates/slot-ui/tests/sticker.rs
-@@ -11,7 +11,7 @@ fn fields() -> StickerFields<'static> {
+@@ -10,7 +10,7 @@ fn fields() -> StickerFields<'static> {
  #[test]
  fn the_headline_rows_read_as_a_device_plate() {
      let all = sticker_lines(&fields()).join("\n");
@@ -191,7 +188,7 @@ index de52e54..96c106c 100644
      assert!(all.contains("5V"), "{all}");
      assert!(all.contains("1.5A"), "{all}");
      assert!(all.contains("87"), "the gauge reading is missing: {all}");
-@@ -46,11 +46,13 @@ fn the_compliance_block_is_the_credits() {
+@@ -45,11 +45,13 @@ fn the_compliance_block_is_the_credits() {
      for owed in [
          "MGBA",
          "GPSP",

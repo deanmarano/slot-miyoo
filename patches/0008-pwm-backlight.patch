@@ -33,10 +33,10 @@ conclusion about its own ladder in #100.
 Applies on top of 0004, which also touches these two files.
 
 diff --git a/crates/slot-power/src/device.rs b/crates/slot-power/src/device.rs
-index 3010331..f0e62da 100644
+index 39d45f5..0a8af51 100644
 --- a/crates/slot-power/src/device.rs
 +++ b/crates/slot-power/src/device.rs
-@@ -74,9 +74,55 @@ const EVIOCSFF: c_ulong = 0x4030_4580;
+@@ -82,9 +82,55 @@ const EVIOCSFF: c_ulong = 0x4030_4580;
  
  const DISPDBG_MAX: u32 = 255;
  
@@ -92,7 +92,7 @@ index 3010331..f0e62da 100644
  }
  
  enum Led {
-@@ -115,6 +161,7 @@ impl DevicePlatform {
+@@ -123,6 +169,7 @@ impl DevicePlatform {
                  dbg.join("param")
                      .is_file()
                      .then_some(Backlight::Dispdbg(dbg))
@@ -100,7 +100,7 @@ index 3010331..f0e62da 100644
              }
          };
          let battery = first_dir(&sysfs.join("class/power_supply"), is_battery);
-@@ -131,6 +178,13 @@ impl DevicePlatform {
+@@ -139,6 +186,13 @@ impl DevicePlatform {
                  Led::Mono { dir, max }
              }
          });
@@ -114,7 +114,7 @@ index 3010331..f0e62da 100644
          DevicePlatform {
              root,
              sysfs: sysfs.to_path_buf(),
-@@ -174,6 +228,7 @@ impl DevicePlatform {
+@@ -182,6 +236,7 @@ impl DevicePlatform {
          let backlight = match &self.backlight {
              Some(Backlight::Class(dir)) => leaf(dir),
              Some(Backlight::Dispdbg(_)) => "dispdbg".to_string(),
@@ -122,7 +122,7 @@ index 3010331..f0e62da 100644
              None => "no backlight".to_string(),
          };
          let motor = match &self.motor {
-@@ -511,6 +566,21 @@ impl Platform for DevicePlatform {
+@@ -542,6 +597,21 @@ impl Platform for DevicePlatform {
                  write(dir.join("param"), value.to_string());
                  write(dir.join("start"), "1".to_string());
              }
@@ -145,12 +145,12 @@ index 3010331..f0e62da 100644
      }
  
 diff --git a/crates/slot-power/tests/device.rs b/crates/slot-power/tests/device.rs
-index 13dfc57..6b4f4e9 100644
+index 2adef59..b79f670 100644
 --- a/crates/slot-power/tests/device.rs
 +++ b/crates/slot-power/tests/device.rs
-@@ -435,3 +435,76 @@ fn the_kernel_log_keeps_the_latest_card_lines() {
-     assert_eq!(kept.len(), 40);
-     assert_eq!(kept.last().unwrap(), "[99] FAT-fs (mmcblk0p7): line 99");
+@@ -508,3 +508,76 @@ fn the_repair_result_is_read_once() {
+         assert!(!file.exists(), "{text} was left to be shown again");
+     }
  }
 +
 +/// The Mini Flip has no backlight class device and no dispdbg, just a PWM

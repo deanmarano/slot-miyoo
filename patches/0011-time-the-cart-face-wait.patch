@@ -19,10 +19,10 @@ Printed per occurrence past a threshold rather than averaged: an average over
 Applies on top of 0009, which owns the other end of frontend.rs's compose.
 
 diff --git a/crates/slot/src/frontend.rs b/crates/slot/src/frontend.rs
-index 926a1d7..5188926 100644
+index e29b8fb..8f77d6b 100644
 --- a/crates/slot/src/frontend.rs
 +++ b/crates/slot/src/frontend.rs
-@@ -521,7 +521,9 @@ impl Frontend {
+@@ -545,7 +545,9 @@ impl Frontend {
              compositor.upload_game(&frame);
              crate::latency::taken();
          }
@@ -30,8 +30,8 @@ index 926a1d7..5188926 100644
          self.cart_faces.sync(self.session.app_mut(), compositor);
 +        crate::latency::faces_waited(faces_at.elapsed());
          sync_clock(self.session.app_mut(), compositor, &mut self.clocks);
+         sync_binding_faces(self.session.app_mut(), compositor);
          sync_about(self.session.app_mut(), compositor, &mut self.about);
-         sync_quick_clock(self.session.app_mut(), compositor, &mut self.quick_clock);
 diff --git a/crates/slot/src/latency.rs b/crates/slot/src/latency.rs
 index 8a7b91a..bdd153a 100644
 --- a/crates/slot/src/latency.rs

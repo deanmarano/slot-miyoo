@@ -71,10 +71,10 @@ index 059cd0e..bd8cd2e 100644
          TexId(self.textures.len() - 1)
      }
 diff --git a/crates/slot-gfx/src/fbo.rs b/crates/slot-gfx/src/fbo.rs
-index b4c49ec..304f03d 100644
+index 75d63e5..6963aa3 100644
 --- a/crates/slot-gfx/src/fbo.rs
 +++ b/crates/slot-gfx/src/fbo.rs
-@@ -176,6 +176,11 @@ impl Compositor {
+@@ -156,6 +156,11 @@ impl Compositor {
          self.sprites.update_texture(id, w, h, rgba);
      }
  
@@ -87,10 +87,10 @@ index b4c49ec..304f03d 100644
          self.gain = blue_light_gain(step);
      }
 diff --git a/crates/slot-gfx/src/soft/mod.rs b/crates/slot-gfx/src/soft/mod.rs
-index b527104..5afac41 100644
+index da0f29e..81eeea5 100644
 --- a/crates/slot-gfx/src/soft/mod.rs
 +++ b/crates/slot-gfx/src/soft/mod.rs
-@@ -1131,16 +1131,45 @@ impl Compositor {
+@@ -1130,16 +1130,45 @@ impl Compositor {
      }
  
      pub fn create_texture(&mut self, w: u32, h: u32, rgba: &[u8]) -> TexId {
@@ -140,7 +140,7 @@ index b527104..5afac41 100644
      /// Nearest and linear are the same here: everything is nearest-sampled.
      /// The UI draws its faces at 1:1, so this costs nothing visible yet.
      pub fn create_texture_nearest(&mut self, w: u32, h: u32, rgba: &[u8]) -> TexId {
-@@ -2004,3 +2033,70 @@ mod game_bezel_tests {
+@@ -2000,3 +2029,70 @@ mod game_bezel_tests {
          assert_eq!((w, h), (crate::power::PICTURE[0], crate::power::PICTURE[1]));
      }
  }
@@ -200,7 +200,7 @@ index b527104..5afac41 100644
 +        let mut c = Compositor::new(&NoSurface).expect("compositor");
 +        let tex = c.create_texture(16, 16, &pixels(16));
 +        c.free_texture(tex);
-+        c.begin_frame(Layout::Framed);
++        c.begin_frame();
 +        c.draw_list(&[Draw::Tex {
 +            x: 0.0,
 +            y: 0.0,
@@ -212,16 +212,16 @@ index b527104..5afac41 100644
 +    }
 +}
 diff --git a/crates/slot-ui/src/backdrop.rs b/crates/slot-ui/src/backdrop.rs
-index 63c00fd..67b1a83 100644
+index 8f725e0..53179b4 100644
 --- a/crates/slot-ui/src/backdrop.rs
 +++ b/crates/slot-ui/src/backdrop.rs
 @@ -1,5 +1,4 @@
  use std::path::Path;
 -use std::sync::OnceLock;
  
- use slot_gfx::{Canvas, Draw, TexId, OUT_H, OUT_W, PICTURE};
+ use slot_gfx::{Canvas, Draw, TexId, OUT_H, OUT_W};
  
-@@ -161,17 +160,20 @@ fn plain_band(art: &[u8], aw: usize, ah: usize, axis: Axis) -> usize {
+@@ -68,17 +67,20 @@ fn panel_bezel(
  }
  
  /// The carousel ground, scaled to cover the whole screen, including behind the footer.
@@ -249,12 +249,12 @@ index 63c00fd..67b1a83 100644
 +    art::cover_bytes(BLUR_PNG, OUT_W, OUT_H)
  }
  
- pub fn draw_ground(canvas: Canvas, face: Option<TexId>, out: &mut Vec<Draw>) {
+ pub fn draw_ground(canvas: Canvas, face: Option<(TexId, u32)>, out: &mut Vec<Draw>) {
 diff --git a/crates/slot/src/app.rs b/crates/slot/src/app.rs
-index 8912c90..7d260a1 100644
+index 2a120c6..376b5c0 100644
 --- a/crates/slot/src/app.rs
 +++ b/crates/slot/src/app.rs
-@@ -1189,6 +1189,30 @@ impl App {
+@@ -1319,6 +1319,30 @@ impl App {
          }
      }
  
@@ -307,10 +307,10 @@ index 34b06e4..70d823c 100644
              self.place(app, compositor, key, face, interior);
          }
 diff --git a/crates/slot/src/frontend.rs b/crates/slot/src/frontend.rs
-index f519f3e..188e240 100644
+index c40019f..436dcde 100644
 --- a/crates/slot/src/frontend.rs
 +++ b/crates/slot/src/frontend.rs
-@@ -315,10 +315,11 @@ impl Frontend {
+@@ -327,10 +327,11 @@ impl Frontend {
          let Some(rgba) = slot_ui::default_background() else {
              return;
          };
@@ -324,7 +324,7 @@ index f519f3e..188e240 100644
              self.session.app_mut().set_blur(id);
          }
      }
-@@ -548,6 +549,20 @@ impl Frontend {
+@@ -573,6 +574,20 @@ impl Frontend {
          sync_about(self.session.app_mut(), compositor, &mut self.about);
          sync_quick_clock(self.session.app_mut(), compositor, &mut self.quick_clock);
          sync_quick_palette(self.session.app_mut(), compositor, &mut self.quick_palette);
@@ -346,7 +346,7 @@ index f519f3e..188e240 100644
          sync_game_bezel(self.session.app_mut(), compositor, &mut self.game_bezel);
          compositor.set_game_bezel(self.session.app().shown_game_bezel());
 diff --git a/crates/slot/tests/render_shelves.rs b/crates/slot/tests/render_shelves.rs
-index 4094008..ef23677 100644
+index 3ddcd82..55ef2f8 100644
 --- a/crates/slot/tests/render_shelves.rs
 +++ b/crates/slot/tests/render_shelves.rs
 @@ -100,7 +100,7 @@ fn field(px: &[u8]) -> [u32; 3] {
