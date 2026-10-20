@@ -68,7 +68,8 @@ Upstream lives in `upstream/slot` as a **pinned, read-only submodule**. Every
 change this port makes to upstream files is a patch in `patches/`, applied to
 that working tree by `task patch`; a patch that no longer applies is a hard
 error, so an upstream bump cannot quietly drop one. The submodule was last
-bumped on 2026-10-20, to upstream `f4b7bc3`.
+bumped on 2026-10-20, to **`v1.7.0+32`** (upstream `f4b7bc3`, 32 commits past
+the v1.7.0 tag).
 
 The port is feasible because `slot-ui` makes no graphics calls at all — it
 emits a display list of six `Draw` variants, and all the GL sits behind one
@@ -126,6 +127,9 @@ about frame times or the 101 MB ceiling.
 
 ## where to read next
 
+- [**docs/PORTING.md**](docs/PORTING.md) — where every device-specific part
+  lives, for getting slot onto another handheld. The Mini Plus and Mini are the
+  same GPU-less SoC as this one.
 - [**notes/port-log.md**](notes/port-log.md) — how the port works and why,
   patch by patch, plus what is still open.
 - [**notes/hardware.md**](notes/hardware.md) — everything measured off the

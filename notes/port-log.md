@@ -35,6 +35,13 @@ code rather than replaying, and one shrank to a third of its size:
 
 Not yet run on the handheld.
 
+`0003` was checked for the same treatment and does not shrink: upstream's new
+remapping (`input/bind.rs`, `input/table.rs`) maps `Device` to `Btn`, a layer
+*above* raw evdev codes, and `code_to_btn` is where this device's keyboard-style
+codes live. Its lid handling has no upstream counterpart either -- upstream's
+new lid watcher is a card script, `card/System/lid.sh`, which this port's own
+`launch_frontend.sh` does not start.
+
 **The bump also broke the memory budget**, and fixing that took most of a day
 and is the bulk of what is new here. slot was holding 44 MB before a core was
 even loaded, against about 80 MB the device can give, and a GBA cart was being
