@@ -17,11 +17,11 @@ slot installs beside it as one more app, and works on stock firmware as well as
 on Onion or Allium — no custom firmware is required to run it.
 
 It is tested on the **Mini Flip** with **stock Miyoo firmware** (build
-202510011046) and with **Allium**, and on the **Mini Plus** with an Allium
-card. Onion gets the same launcher entry as stock and the same binary, and
+202510011046) and with **Allium**, on the **Mini Plus** with both stock and
+Allium, and on the **Mini** with **Onion** 4.3.1. Onion gets the same launcher entry as stock and the same binary, and
 nothing in the launch path depends on a particular firmware, but nobody has
-booted it on Onion yet. On the Mini Plus, GBC, the menus, saves and states,
-and a stock-firmware install are all untried -- see
+booted it on Onion yet. On the Mini Plus and the Mini, the menus,
+saves and states have had a poke rather than a session -- see
 [docs/PORTING.md](PORTING.md).
 
 ## 0. if the card is blank

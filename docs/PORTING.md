@@ -69,9 +69,12 @@ In rough order of how much work each is.
 The **Miyoo Mini Plus** runs this, tested 2026-10-21: the same card and the
 same binary as the Mini Flip, reading its 640x480 panel at startup. Games
 play, with sound, the console bodies and the Advance SP shell drawn right.
-What has *not* been checked there: GBC, the menus, buttons beyond play, saves
-and states, a clean install on stock firmware, and a frame time measured
-without the latency trace armed.
+A clean install of the release zip on its **stock** firmware works too,
+tested 2026-10-22: slot appears in the app list beside the vendor's own
+apps, whose `config.json` uses the same `icon`/`iconsel` keys this port had
+to learn about. What has *not* been checked there: the menus, saves and
+states over a real session, and a frame time measured without the latency
+trace armed.
 
 The **Miyoo Mini** runs this too, tested 2026-10-21 on Onion 4.3.1: GB, GBC
 and GBA with sound, the same binary again. It needed two things the other two
