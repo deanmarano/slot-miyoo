@@ -1,0 +1,114 @@
+update the app tests for the panel-sized canvas and whole-texture source
+
+Five tests in crates/slot/tests/app.rs failed on every build of this port
+since the patches that changed what they measure, while upstream's own
+suite passed. They were never wrong about behaviour; they were written
+against upstream's 720x480 canvas and its cropping stretch.
+
+  - 0002 makes the canvas the 752x560 panel. The core picker's lid
+    shadow was expected at x=360, the Cancel hint at x=234, and the board
+    to rise downwards between its start and rest positions. On the
+    taller canvas the board rises (y 174 to 150), the shadow centres on
+    the canvas, and Cancel sits beside Swap, which the test already
+    checks. They derive from the canvas now.
+
+  - 0009 makes source_rect the whole texture in both modes, and sizes
+    the stretched picture through game_base instead. The two stretch
+    tests looked for the old crop window. They compare game_base with
+    base_size for a stretched Game Boy.
+
+Test changes only. Applies after 0026.
+
+diff --git a/crates/slot/tests/app.rs b/crates/slot/tests/app.rs
+--- a/crates/slot/tests/app.rs
++++ b/crates/slot/tests/app.rs
+@@ -8,7 +8,7 @@
+ use slot::audio::Sfx;
+ use slot::emu::{EmuHandle, Speed};
+ use slot::session::Session;
+-use slot::video_mode::{video_mode_for, VideoMode, VIDEO_MODE_FILE};
++use slot::video_mode::{base_size, video_mode_for, VideoMode, VIDEO_MODE_FILE};
+ use slot_gfx::WHOLE_TEXTURE;
+ use slot_input::{Action, Btn, RawEvent};
+ use slot_retro::ButtonMask;
+@@ -1341,7 +1341,8 @@
+     );
+     let (shadow_i, s) = shadows[0];
+     assert!(
+-        (s[0] + s[2] / 2.0 - 360.0).abs() < 0.01 && (s[1] + s[3] / 2.0 - 140.0).abs() < 0.01,
++        (s[0] + s[2] / 2.0 - Canvas::framed().w / 2.0).abs() < 0.01
++            && (s[1] + s[3] / 2.0 - 140.0).abs() < 0.01,
+         "the lid's shadow is not under it: {s:?}"
+     );
+     assert!(shadow_i < lid_i, "the lid's shadow is drawn over the lid");
+@@ -1350,7 +1351,7 @@
+     let at = |tex| tex_at(&out, tex).expect("a legend hint is missing").1;
+     let seen = |w: u32| (w - HINT_EDGE) as f32;
+     let y = out_h() as f32 - MOUTH_H * 2.0;
+-    assert_eq!(at(cancel.0), [234.0, y, cancel.1 as f32, MOUTH_H]);
++    assert_eq!(at(cancel.0)[1..], [y, cancel.1 as f32, MOUTH_H]);
+     assert_eq!(
+         at(swap.0)[0] + seen(swap.1) / 2.0,
+         out_w() as f32 / 2.0,
+@@ -1528,7 +1529,7 @@
+     );
+     assert_eq!(bx, start.x, "the board slid sideways on the way down: {bx}");
+     assert!(
+-        by > start.y && by < rest.y,
++        by > start.y.min(rest.y) && by < start.y.max(rest.y),
+         "the board is not on its way down: {by}"
+     );
+     assert_eq!(
+@@ -1642,7 +1643,7 @@
+     );
+     assert_eq!(bx, start.x, "the board slid sideways on the way back: {bx}");
+     assert!(
+-        by < rest.y && by > start.y,
++        by > start.y.min(rest.y) && by < start.y.max(rest.y),
+         "the board is not on its way back up: {by}"
+     );
+     assert_eq!(
+@@ -1840,7 +1841,12 @@
+     s
+ }
+ 
+-const GB_WINDOW: [f32; 4] = [40.0 / 240.0, 0.0, 160.0 / 240.0, 1.0];
++/// The picture's size on the canvas when a Game Boy cart is stretched. The
++/// source rect is the whole texture in both modes; stretching changes how big
++/// that texture is drawn.
++fn gb_stretched() -> [f32; 2] {
++    base_size(Platform::Gb, VideoMode::Stretch)
++}
+ 
+ fn pad(s: &Session) -> u16 {
+     s.emu().expect("no core in the slot").input().0
+@@ -1858,8 +1864,8 @@
+ 
+     s.feed([RawEvent::Down(Btn::L1)], 100);
+     assert_eq!(
+-        s.app().source_rect(),
+-        GB_WINDOW,
++        s.app().game_base(),
++        gb_stretched(),
+         "L did not stretch the picture"
+     );
+     assert_eq!(pad(&s) & ButtonMask::L, 0, "L reached the game as well");
+@@ -1871,6 +1877,7 @@
+         WHOLE_TEXTURE,
+         "R did not give it back"
+     );
++    assert_ne!(s.app().game_base(), gb_stretched());
+     assert_eq!(pad(&s) & ButtonMask::R, 0, "R reached the game as well");
+     s.feed([RawEvent::Up(Btn::R1)], 220);
+ 
+@@ -1986,8 +1993,8 @@
+ 
+     let mut s = session_playing(d.path());
+     assert_eq!(
+-        s.app().source_rect(),
+-        GB_WINDOW,
++        s.app().game_base(),
++        gb_stretched(),
+         "the cart did not come back stretched"
+     );
+     s.feed([RawEvent::Down(Btn::R1)], 100);
