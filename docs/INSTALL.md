@@ -1,4 +1,4 @@
-# installing slot on a Miyoo Mini Flip
+# installing slot on a Miyoo Mini Flip or Mini Plus
 
 This is the short version. The [README](../README.md) is the development log and
 explains *why*; this page is just what to do.
@@ -7,14 +7,22 @@ You need: the handheld, its SD card, a computer with a card reader, and a
 `slot-miyoo-*.zip` from [Releases](https://github.com/deanmarano/slot-miyoo/releases)
 (or `task release`, if you are building it yourself).
 
+**One zip covers the Mini Flip and the Mini Plus.** slot reads the panel from
+the framebuffer when it starts -- 752x560 on the Flip, 640x480 on the Mini
+Plus -- so the same card runs on either, and moving the card between them is
+all it takes.
+
 Nothing here reflashes the device, deletes anything, or replaces your launcher.
 slot installs beside it as one more app, and works on stock firmware as well as
 on Onion or Allium — no custom firmware is required to run it.
 
-It is tested on **stock Miyoo firmware** (build 202510011046) and on an
-**Allium card**. Onion gets the same launcher entry as stock and the same
-binary, and nothing in the launch path depends on a particular firmware, but
-nobody has booted it on Onion yet.
+It is tested on the **Mini Flip** with **stock Miyoo firmware** (build
+202510011046) and with **Allium**, and on the **Mini Plus** with an Allium
+card. Onion gets the same launcher entry as stock and the same binary, and
+nothing in the launch path depends on a particular firmware, but nobody has
+booted it on Onion yet. On the Mini Plus, GBC, the menus, saves and states,
+and a stock-firmware install are all untried -- see
+[docs/PORTING.md](PORTING.md).
 
 ## 0. if the card is blank
 
@@ -55,10 +63,10 @@ Put the card in your computer. The **card root** is the directory holding
 
 Unpack the zip so its contents land *in* that directory, not in a subfolder of
 it. You should end up with `System/slot` on the card, not
-`slot-miyoo-v0.1/System/slot`.
+`slot-miyoo-v0.2.0/System/slot`.
 
 ```sh
-unzip -d /media/you/MIYOO slot-miyoo-v0.1-flip.zip
+unzip -d /media/you/MIYOO slot-miyoo-v0.2.0.zip
 sync
 ```
 

@@ -336,7 +336,7 @@ tasks:
       # this wrong is the one mistake that makes the app not appear.
       - |
         set -eu
-        zip="slot-miyoo-{{.VERSION}}-flip.zip"
+        zip="slot-miyoo-{{.VERSION}}.zip"
         rm -f "{{.OUT}}/$zip"
         (cd {{.OUT}}/stage && zip -qr "../$zip" .)
         cd {{.OUT}}

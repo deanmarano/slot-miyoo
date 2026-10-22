@@ -143,8 +143,10 @@ jobs:
           The short version is in `System/slot-install.md`, which travels in the
           zip, or [docs/INSTALL.md](docs/INSTALL.md) here.
 
-          **This is the Miyoo Mini Flip build.** Its canvas is the Flip's
-          752x560 panel; other Miyoo models have a different one. See
+          **For the Miyoo Mini Flip and the Miyoo Mini Plus.** One binary for
+          both: it reads the panel from the framebuffer at startup, 752x560 on
+          the Flip and 640x480 on the Mini Plus, so the same card runs on
+          either. Other Miyoo models are not supported; see
           [notes/variants.md](notes/variants.md).
 
           Emulation is mGBA (MPL-2.0) and gpSP (GPL-2.0); slot is
