@@ -1,0 +1,191 @@
+name the handheld on its own sticker
+
+`0007` writes MODEL NO. MIYOO MINI FLIP into the About plate, which was true
+when there was one handheld. There are three now -- the Flip, the Mini Plus
+and the Mini -- running the same binary off the same card, and two of them
+were being told they were something else.
+
+The name comes from the device layer rather than a constant: `Platform` grows
+a `model()`, defaulted to upstream's own machine so nothing above the trait
+has to know this port exists, and `DevicePlatform` answers it by looking at
+what the hardware has.
+
+The same three-way split Allium makes in its boot hook, and the one the
+battery already depends on, so it is tested by everything that reads a
+charge:
+
+  - a second input node, `/dev/input/event1`, is the Flip's hall sensor;
+  - `/customer/app/axp_test` is the Mini Plus's battery tool;
+  - `/dev/sar` is what is left, the Mini, whose charge is an ADC (`0022`).
+
+A handheld that answers none of them gets MIYOO rather than a guess. Nothing
+reads a model string, because none of these three carries one.
+
+Applies to upstream 91499a9.
+
+diff --git a/crates/slot-power/src/device.rs b/crates/slot-power/src/device.rs
+index 225b1d7..fb49006 100644
+--- a/crates/slot-power/src/device.rs
++++ b/crates/slot-power/src/device.rs
+@@ -735,6 +735,26 @@ impl Platform for DevicePlatform {
+         }
+     }
+ 
++    /// Which Miyoo this is, told apart by what the hardware has rather than
++    /// by a model string none of them carries.
++    ///
++    /// The same three-way split Allium makes in its boot hook, and the same
++    /// one the battery already relies on: the Flip is the one with a second
++    /// input node (its hall sensor), the Mini Plus is the one with the vendor
++    /// battery tool, and the Mini is the one left -- the one whose charge is
++    /// an ADC. A handheld that answers none of them gets the family name, not
++    /// a guess.
++    fn model(&self) -> String {
++        let has = |p: &str| Path::new(p).exists();
++        match (has("/dev/input/event1"), has(AXP_TOOL), has("/dev/sar")) {
++            (true, _, _) => "MIYOO MINI FLIP",
++            (_, true, _) => "MIYOO MINI PLUS",
++            (_, _, true) => "MIYOO MINI",
++            _ => "MIYOO",
++        }
++        .to_string()
++    }
++
+     fn battery(&self) -> Option<Battery> {
+         if let Some(b) = axp_battery() {
+             return Some(b);
+diff --git a/crates/slot-power/src/lib.rs b/crates/slot-power/src/lib.rs
+index 6cc50c1..68ccf4d 100644
+--- a/crates/slot-power/src/lib.rs
++++ b/crates/slot-power/src/lib.rs
+@@ -64,6 +64,13 @@ pub trait Platform: Send {
+     fn set_clock(&mut self, secs: i64);
+     fn set_rumble(&mut self, strength: u16);
+ 
++    /// What to call this handheld on the About sticker. Upstream builds for
++    /// one machine and names it there; this port runs on three, so the device
++    /// layer answers it.
++    fn model(&self) -> String {
++        "ANBERNIC RG SP".to_string()
++    }
++
+     fn relink_adb(&mut self) -> bool {
+         false
+     }
+diff --git a/crates/slot-power/src/power.rs b/crates/slot-power/src/power.rs
+index f21e429..13b61c0 100644
+--- a/crates/slot-power/src/power.rs
++++ b/crates/slot-power/src/power.rs
+@@ -31,6 +31,10 @@ impl Power {
+         self.platform.battery()
+     }
+ 
++    pub fn model(&self) -> String {
++        self.platform.model()
++    }
++
+     pub fn charge(&self) -> Charge {
+         self.platform.charge()
+     }
+diff --git a/crates/slot-ui/src/sticker.rs b/crates/slot-ui/src/sticker.rs
+index 0e57e05..1913965 100644
+--- a/crates/slot-ui/src/sticker.rs
++++ b/crates/slot-ui/src/sticker.rs
+@@ -34,6 +34,8 @@ const ORIGIN_PX: f32 = 6.5;
+ 
+ pub struct StickerFields<'a> {
+     pub battery: Option<u8>,
++    /// The handheld's own name. This port runs on three of them.
++    pub model: &'a str,
+     pub serial: &'a str,
+     pub version: &'a str,
+ }
+@@ -63,7 +65,7 @@ pub const HOME: &str = "SEE README.";
+ 
+ pub fn head_rows(f: &StickerFields) -> [String; 3] {
+     [
+-        "MODEL NO. MIYOO MINI FLIP".into(),
++        format!("MODEL NO. {}", f.model),
+         format!("INPUT : 5V{DC}1.5A"),
+         match f.battery {
+             Some(p) => format!("BATTERY : LI-ION ({p}%)"),
+diff --git a/crates/slot-ui/tests/render_about.rs b/crates/slot-ui/tests/render_about.rs
+index d98326d..ebc4c78 100644
+--- a/crates/slot-ui/tests/render_about.rs
++++ b/crates/slot-ui/tests/render_about.rs
+@@ -11,6 +11,7 @@ fn render_about() {
+         .and_then(|p| wallpaper_face(std::path::Path::new(&p), out_w(), out_h()));
+     let label = sticker_face(&StickerFields {
+         battery: Some(87),
++        model: "MIYOO MINI PLUS",
+         serial: "04738857",
+         version: "0.1.0",
+     });
+diff --git a/crates/slot-ui/tests/render_sticker.rs b/crates/slot-ui/tests/render_sticker.rs
+index edf6929..5eb0266 100644
+--- a/crates/slot-ui/tests/render_sticker.rs
++++ b/crates/slot-ui/tests/render_sticker.rs
+@@ -15,6 +15,7 @@ fn render_sticker() {
+     };
+     let face = sticker_face(&StickerFields {
+         battery: Some(87),
++        model: "MIYOO MINI PLUS",
+         serial: "04738857",
+         version: "0.1.0",
+     });
+diff --git a/crates/slot-ui/tests/sticker.rs b/crates/slot-ui/tests/sticker.rs
+index 0b189f7..22d7878 100644
+--- a/crates/slot-ui/tests/sticker.rs
++++ b/crates/slot-ui/tests/sticker.rs
+@@ -3,6 +3,7 @@ use slot_ui::{sticker_lines, StickerFields};
+ fn fields() -> StickerFields<'static> {
+     StickerFields {
+         battery: Some(87),
++        model: "MIYOO MINI PLUS",
+         serial: "04738857",
+         version: "0.1.0",
+     }
+@@ -11,7 +12,9 @@ fn fields() -> StickerFields<'static> {
+ #[test]
+ fn the_headline_rows_read_as_a_device_plate() {
+     let all = sticker_lines(&fields()).join("\n");
+-    assert!(all.contains("MIYOO MINI FLIP"), "{all}");
++    // Whatever handheld it is told it is: this port runs on three, and the
++    // device layer names them apart. See `DevicePlatform::model`.
++    assert!(all.contains("MIYOO MINI PLUS"), "{all}");
+     assert!(all.contains("5V"), "{all}");
+     assert!(all.contains("1.5A"), "{all}");
+     assert!(all.contains("87"), "the gauge reading is missing: {all}");
+diff --git a/crates/slot/src/app.rs b/crates/slot/src/app.rs
+index 8a3d16b..1514809 100644
+--- a/crates/slot/src/app.rs
++++ b/crates/slot/src/app.rs
+@@ -2353,6 +2353,13 @@ impl App {
+         self.battery
+     }
+ 
++    /// What this handheld calls itself, for the About sticker.
++    pub fn model(&self) -> String {
++        self.power
++            .as_ref()
++            .map_or_else(|| "MIYOO".to_string(), |p| p.model())
++    }
++
+     pub fn poweroff(&mut self) {
+         self.settle_saves();
+         if let Some(power) = &mut self.power {
+diff --git a/crates/slot/src/frontend.rs b/crates/slot/src/frontend.rs
+index 537a743..a96f949 100644
+--- a/crates/slot/src/frontend.rs
++++ b/crates/slot/src/frontend.rs
+@@ -1215,8 +1215,10 @@ fn sync_about(app: &mut App, compositor: &mut Compositor, state: &mut AboutFace)
+     }
+     state.battery = battery;
+     let build = Build::current();
++    let model = app.model();
+     let face = sticker_face(&StickerFields {
+         battery,
++        model: &model,
+         serial: &build.serial(),
+         version: build.version,
+     });

@@ -80,7 +80,7 @@ emits a display list of six `Draw` variants, and all the GL sits behind one
 `/dev/fb0`; the port adds a third, a software rasteriser writing to a mmapped
 framebuffer. Nothing above that seam changed.
 
-The twenty-one patches, by what they are about:
+The twenty-two patches, by what they are about:
 
 | | |
 |---|---|
@@ -91,7 +91,7 @@ The twenty-one patches, by what they are about:
 | timing | `0011` cart-face wait, `0014` animation step clamp |
 | panels | `0020` the layout sized from the panel at runtime, so one binary fits the Flip's 752x560 and the Mini and Mini Plus's 640x480 |
 | the Mini | `0021` volume handed to its wheel, `0022` its battery read off the SAR ADC |
-| this device | `0007` the sticker |
+| these devices | `0007` the sticker, `0023` the handheld's own name on it |
 
 `0019` and `0014` are not about this device and belong upstream;
 `notes/upstream-perf-issue.md` is the issue drafted for them.
