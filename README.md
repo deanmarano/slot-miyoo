@@ -12,6 +12,10 @@ It plays Game Boy, Game Boy Color and Game Boy Advance games on real hardware,
 with saves, save states, rewind, sleep-on-close and a console body drawn around
 the picture.
 
+The same binary also runs on the **Miyoo Mini Plus** — the same GPU-less
+SigmaStar SoC with a 640x480 panel — which it reads from the framebuffer at
+startup rather than having compiled in.
+
 ## install it
 
 Download the latest `slot-miyoo-*-flip.zip` from
@@ -77,7 +81,7 @@ emits a display list of six `Draw` variants, and all the GL sits behind one
 `/dev/fb0`; the port adds a third, a software rasteriser writing to a mmapped
 framebuffer. Nothing above that seam changed.
 
-The eighteen patches, by what they are about:
+The nineteen patches, by what they are about:
 
 | | |
 |---|---|
@@ -86,6 +90,7 @@ The eighteen patches, by what they are about:
 | device hardware | `0003` button codes, `0005` `MI_AO` audio, `0008` PWM backlight, `0010` battery source |
 | memory | `0016` cart faces, `0017` rewind sizing, `0018` texture frees, `0019` `need_fullpath` |
 | timing | `0011` cart-face wait, `0014` animation step clamp |
+| panels | `0020` the layout sized from the panel at runtime, so one binary fits the Flip's 752x560 and the Mini Plus's 640x480 |
 | this device | `0007` the sticker |
 
 `0019` and `0014` are not about this device and belong upstream;

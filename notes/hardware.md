@@ -1397,3 +1397,50 @@ swap. GBA headroom on a stock card is therefore *not* the same problem, and
 the OOM work from 2026-10-16 may be unnecessary there — untested, and swapping
 to a vfat SD card has its own cost in frame time. Treat it as a hypothesis
 until something is measured on stock.
+
+## The Miyoo Mini Plus, measured (2026-10-21)
+
+The same card and the same binary as the Mini Flip, read over telnet while
+slot was running on it.
+
+| | |
+|---|---|
+| SoC | `INFINITY2M SSC011A-S01A-S` -- SSD202D, as the Flip |
+| kernel | 4.9.84 #1136 SMP PREEMPT, built 2023-06-28 |
+| panel | `/sys/class/graphics/fb0` **640x480**, 32bpp, stride 2560, `virtual_size 640,1440` -- triple buffered |
+| RAM | `MemTotal 103360 kB`, the Flip's to the kilobyte |
+| swap | **none** on this card (`/proc/swaps` empty) |
+| power supply | no `/sys/class/power_supply`, no `/sys/class/backlight` -- PWM channel and `axp_test`, as the Flip |
+| input | one node, `event0`, `soc:gpio_keys` |
+| card | `/dev/mmcblk0p1` on `/mnt/SDCARD`, vfat |
+
+slot's own line, which is the one that matters for layout:
+
+```
+slot: panel 640x480, canvas 640x480, turn None
+slot: backlight pwm (0 to 112), battery axp_test, rtc0, no motor
+slot: boot: shelf faces at 540 ms, input at 987 ms
+```
+
+Frame times, with `SLOT_TRACE_LATENCY` armed, which is not free:
+
+```
+in game:  work 7.3 ms, period 16.77 ms, 6 of 600 frames missed a latch
+shelf:    work 13.7-24.4 ms, 57-69 of 600 missed
+```
+
+In game it is quicker than the Flip's 8.2 ms -- fewer pixels -- and the shelf
+is worse, 13.7-24.4 against 15-18. Both were read with the trace writing to
+the card every frame, so neither is the number this device can do; measure
+again with `Config/trace-latency.txt` deleted before believing either.
+
+**Stock's own `rcS` runs `telnetd -l sh`.** On a card with no network script
+at all there is still a shell, once something brings the radio up. Here the
+radio came from this port's own `net-up.sh` on the development card, not from
+the device.
+
+The panel is the only thing the port had to learn: `out_w()`/`out_h()` are
+read from the framebuffer at startup (`0020`), the picture is fitted to the
+width, and the console body is sized from the picture's frame. Everything
+else -- audio, backlight, battery, input codes, the card scripts -- worked
+unchanged from the Flip.

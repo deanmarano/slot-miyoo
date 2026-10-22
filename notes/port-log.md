@@ -33,7 +33,10 @@ code rather than replaying, and one shrank to a third of its size:
 | `0015` clear carts | upstream added a test asserting the board is its own layer, which is the thing this removes; the assertion is turned around, and `cart.rs` still proves the flattened face |
 | `0017` rewind | run-ahead is gone from `emu.rs`, so the state now comes straight from `core.serialize()` |
 
-Not yet run on the handheld.
+Run on the handheld: both of them. The same card and the same binary boot on
+a Mini Flip and on a **Miyoo Mini Plus**, which is where `0020` came from --
+the panel is read from the framebuffer at startup now rather than compiled in.
+See [hardware.md](hardware.md) for what the Mini Plus measured.
 
 `0003` was checked for the same treatment and does not shrink: upstream's new
 remapping (`input/bind.rs`, `input/table.rs`) maps `Device` to `Btn`, a layer

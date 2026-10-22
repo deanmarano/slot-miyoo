@@ -24,7 +24,7 @@ This port adds a third, `software` — a CPU rasteriser over a mmapped
 
 | concern | file | patch | notes |
 |---|---|---|---|
-| panel size | `slot-gfx/src/surface.rs` (`OUT_W`/`OUT_H`) | `0009` | the canvas *is* the panel here, 752x560. Upstream's is 720x480 |
+| panel size | `slot-gfx/src/surface.rs` (`out_w()`/`out_h()`) | `0009`, `0020` | the canvas *is* the panel here, and it is read from the framebuffer at startup by `set_panel_size`. 752x560 on a Mini Flip, 640x480 on a Mini Plus, one binary |
 | picture size and fit | `slot-gfx/src/pipeline.rs` (`SCALE`, `SRC_W`, `SRC_H`) | `0009` | 3x actual size, height-filling stretch |
 | the rasteriser | `slot-gfx/src/soft/` — `mod.rs`, `raster.rs`, `fb.rs` | `0002` | ~3,200 lines. `fb.rs` owns the framebuffer and the page flip |
 | framebuffer format | `slot-gfx/src/soft/fb.rs` | `0002` | XRGB8888 here, triple buffered. A 16bpp panel needs work in `blit` |
@@ -66,11 +66,23 @@ In rough order of how much work each is.
 
 ## other SigmaStar devices
 
-The **Miyoo Mini Plus** and **Miyoo Mini** are the same SSD202D with no GPU,
-so the rasteriser should apply. The panel is the main difference — 640x480
-rather than 752x560 — along with the button map, and the Mini Plus has no lid.
-`notes/hardware.md` is measured on a Mini Flip; treat every number in it as a
-hypothesis on another device until it has been read off that device.
+The **Miyoo Mini Plus** runs this, tested 2026-10-21: the same card and the
+same binary as the Mini Flip, reading its 640x480 panel at startup. Games
+play, with sound, the console bodies and the Advance SP shell drawn right.
+What has *not* been checked there: GBC, the menus, buttons beyond play, saves
+and states, a clean install on stock firmware, and a frame time measured
+without the latency trace armed.
+
+The **Miyoo Mini** is the same SoC and panel again, and untried.
+
+The **Miyoo A30** is not the same machine: an Allwinner A33 with a Mali-400
+and 512 MB, so it can run upstream's own GLES2 backend and wants none of this
+rasteriser. The audio, backlight and battery patches here are SigmaStar's and
+would not apply either.
+
+`notes/hardware.md` is measured on a Mini Flip except where it says otherwise;
+treat every number in it as a hypothesis on another device until it has been
+read off that device.
 
 Upstream's `fbdev` backend is the one to use on anything that *does* have
 GLES2. The software path is slower by a wide margin and exists because this
