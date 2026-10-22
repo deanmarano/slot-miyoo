@@ -49,10 +49,10 @@ It also gives the 3.4 MB back for the duration of the game, which is where
 it is actually wanted.
 
 diff --git a/crates/slot/src/app.rs b/crates/slot/src/app.rs
-index cf15a85..2a120c6 100644
+index 5c1cafc..06d2295 100644
 --- a/crates/slot/src/app.rs
 +++ b/crates/slot/src/app.rs
-@@ -450,9 +450,6 @@ pub struct App {
+@@ -455,9 +455,6 @@ pub struct App {
      state_writer: crate::state_writer::StateWriter,
  }
  
@@ -62,7 +62,7 @@ index cf15a85..2a120c6 100644
  #[derive(Clone, Copy, PartialEq, Eq, Debug)]
  pub struct FaceWant {
      pub shelf: usize,
-@@ -1438,17 +1435,39 @@ impl App {
+@@ -1456,17 +1453,39 @@ impl App {
  
      pub fn face_wants(&self) -> Vec<FaceWant> {
          let here = self.shelf();
@@ -109,7 +109,7 @@ index cf15a85..2a120c6 100644
          wants
              .into_iter()
              .filter(|(at, i)| self.shelves[*at].1.face(*i).is_none())
-@@ -1474,12 +1493,20 @@ impl App {
+@@ -1492,12 +1511,20 @@ impl App {
  
      pub fn shed_faces(&mut self) -> Vec<TexId> {
          let neighbours = self.neighbour_shelves();
@@ -133,7 +133,7 @@ index cf15a85..2a120c6 100644
              } else {
                  Vec::new()
              };
-@@ -2065,6 +2092,20 @@ impl App {
+@@ -2083,6 +2110,20 @@ impl App {
          self.colour_correction_for(self.playing_platform())
      }
  

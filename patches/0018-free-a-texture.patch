@@ -251,10 +251,10 @@ index 8f725e0..53179b4 100644
  
  pub fn draw_ground(canvas: Canvas, face: Option<(TexId, u32)>, out: &mut Vec<Draw>) {
 diff --git a/crates/slot/src/app.rs b/crates/slot/src/app.rs
-index 2a120c6..376b5c0 100644
+index 06d2295..a406c25 100644
 --- a/crates/slot/src/app.rs
 +++ b/crates/slot/src/app.rs
-@@ -1319,6 +1319,30 @@ impl App {
+@@ -1337,6 +1337,30 @@ impl App {
          }
      }
  
@@ -307,7 +307,7 @@ index 34b06e4..70d823c 100644
              self.place(app, compositor, key, face, interior);
          }
 diff --git a/crates/slot/src/frontend.rs b/crates/slot/src/frontend.rs
-index c40019f..436dcde 100644
+index f3877a5..40e160b 100644
 --- a/crates/slot/src/frontend.rs
 +++ b/crates/slot/src/frontend.rs
 @@ -327,10 +327,11 @@ impl Frontend {
@@ -324,7 +324,7 @@ index c40019f..436dcde 100644
              self.session.app_mut().set_blur(id);
          }
      }
-@@ -573,6 +574,20 @@ impl Frontend {
+@@ -575,6 +576,20 @@ impl Frontend {
          sync_about(self.session.app_mut(), compositor, &mut self.about);
          sync_quick_clock(self.session.app_mut(), compositor, &mut self.quick_clock);
          sync_quick_palette(self.session.app_mut(), compositor, &mut self.quick_palette);

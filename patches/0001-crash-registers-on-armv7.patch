@@ -1,10 +1,10 @@
 crash registers on armv7
 
 diff --git a/crates/slot/src/crash.rs b/crates/slot/src/crash.rs
-index d3b24d2..f8b3f73 100644
+index 413c20b..f75ee5c 100644
 --- a/crates/slot/src/crash.rs
 +++ b/crates/slot/src/crash.rs
-@@ -110,6 +110,12 @@ unsafe fn registers(ctx: *mut c_void) -> (usize, Option<usize>) {
+@@ -129,6 +129,12 @@ unsafe fn registers(ctx: *mut c_void) -> (usize, Option<usize>) {
      (mc.pc as usize, Some(mc.regs[30] as usize))
  }
  

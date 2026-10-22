@@ -132,25 +132,6 @@ index 0066c43..a76d785 100644
              src[3] *= (OUT_H as f32 - self.bottom) / OUT_H as f32;
          }
          unsafe {
-diff --git a/crates/slot-ui/src/sticker.rs b/crates/slot-ui/src/sticker.rs
-index d9e428c..4b37b89 100644
---- a/crates/slot-ui/src/sticker.rs
-+++ b/crates/slot-ui/src/sticker.rs
-@@ -292,13 +292,7 @@ pub fn sticker_face(f: &StickerFields) -> UndoFace {
-     c.print(sx, sy, body, SERIAL_PX, BLACK);
-     let bx = sx + hash_w + 10.0;
-     c.outline(bx, sy + 1.0, box_w, SERIAL_PX * 1.25, 2.0, BLACK);
--    c.print(
--        bx + box_w * 0.28,
--        sy + 2.0,
--        check,
--        SERIAL_PX * 0.85,
--        BLACK,
--    );
-+    c.print(bx + box_w * 0.28, sy + 2.0, check, SERIAL_PX * 0.85, BLACK);
- 
-     let mut ry = panel_y as f32 + panel_h as f32 + 10.0;
-     let right_edge = (panel_x + panel_w) as f32;
 diff --git a/crates/slot-ui/tests/board.rs b/crates/slot-ui/tests/board.rs
 index 8e38174..7cc41ad 100644
 --- a/crates/slot-ui/tests/board.rs
@@ -367,10 +348,10 @@ index fb399b6..a6590a9 100644
      let (lx, ly) = (x0 + LABEL_X as f32, y0 + LABEL_Y as f32);
      let label_right = lx + LABEL_W as f32;
 diff --git a/crates/slot/src/app.rs b/crates/slot/src/app.rs
-index 2938fe1..cf15a85 100644
+index 58ec57e..5c1cafc 100644
 --- a/crates/slot/src/app.rs
 +++ b/crates/slot/src/app.rs
-@@ -1529,6 +1529,20 @@ impl App {
+@@ -1547,6 +1547,20 @@ impl App {
          video_mode::source_rect(self.platform, self.video_mode)
      }
  
@@ -392,10 +373,10 @@ index 2938fe1..cf15a85 100644
          matches!(self.phase, Phase::Playing { .. }) && self.platform != Platform::Gba
      }
 diff --git a/crates/slot/src/frontend.rs b/crates/slot/src/frontend.rs
-index bf64dc7..e29b8fb 100644
+index 1ce4ca8..12454a1 100644
 --- a/crates/slot/src/frontend.rs
 +++ b/crates/slot/src/frontend.rs
-@@ -532,6 +532,7 @@ impl Frontend {
+@@ -534,6 +534,7 @@ impl Frontend {
          compositor.set_screen_power(self.session.app().screen_power());
          compositor.set_screen_footer(self.session.app().screen_footer());
          compositor.set_game_source_rect(self.session.app().source_rect());

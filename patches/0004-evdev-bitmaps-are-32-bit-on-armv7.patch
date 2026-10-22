@@ -1,10 +1,10 @@
 evdev bitmaps are 32 bit on armv7
 
 diff --git a/crates/slot-power/src/device.rs b/crates/slot-power/src/device.rs
-index d087568..39d45f5 100644
+index 948f76e..c69acd4 100644
 --- a/crates/slot-power/src/device.rs
 +++ b/crates/slot-power/src/device.rs
-@@ -207,12 +207,24 @@ fn ran(what: &str, result: std::io::Result<std::process::ExitStatus>) {
+@@ -209,12 +209,24 @@ fn ran(what: &str, result: std::io::Result<std::process::ExitStatus>) {
  }
  
  pub fn has_bit(mask: &str, bit: u16) -> bool {
@@ -31,7 +31,7 @@ index d087568..39d45f5 100644
  }
  
  pub fn rumble_node(sysfs: &Path) -> Option<String> {
-@@ -420,6 +432,48 @@ fn read_number(path: &Path) -> Option<u32> {
+@@ -446,6 +458,48 @@ fn read_number(path: &Path) -> Option<u32> {
      fs::read_to_string(path).ok()?.trim().parse().ok()
  }
  
@@ -80,7 +80,7 @@ index d087568..39d45f5 100644
  fn charge_at(dir: &Path) -> Charge {
      let Ok(text) = fs::read_to_string(dir.join("status")) else {
          return Charge::Unknown;
-@@ -492,6 +546,9 @@ impl Platform for DevicePlatform {
+@@ -518,6 +572,9 @@ impl Platform for DevicePlatform {
      }
  
      fn battery(&self) -> Option<Battery> {
@@ -90,7 +90,7 @@ index d087568..39d45f5 100644
          let dir = self.battery.as_ref()?;
          let percent = read_number(&dir.join("capacity"))?;
          Some(Battery {
-@@ -731,3 +788,45 @@ pub fn take_repair_result(file: &Path) -> Option<RepairResult> {
+@@ -760,3 +817,45 @@ pub fn take_repair_result(file: &Path) -> Option<RepairResult> {
          _ => RepairResult::Failed,
      })
  }

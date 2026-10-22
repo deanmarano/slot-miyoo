@@ -1,7 +1,7 @@
 audio miao sink
 
 diff --git a/crates/slot/src/audio/alsa.rs b/crates/slot/src/audio/alsa.rs
-index 7d7af27..64956ac 100644
+index 588fe9f..6ecf4a0 100644
 --- a/crates/slot/src/audio/alsa.rs
 +++ b/crates/slot/src/audio/alsa.rs
 @@ -79,7 +79,28 @@ impl Alsa {
@@ -34,7 +34,7 @@ index 7d7af27..64956ac 100644
          let mut last = AudioError::NoDevice;
          for name in DEVICES {
              let Ok(cname) = CString::new(name) else {
-@@ -197,23 +218,30 @@ struct Playback {
+@@ -197,6 +218,9 @@ struct Playback {
      pcm: Option<*mut c_void>,
      rate: u32,
      failing: bool,
@@ -44,33 +44,15 @@ index 7d7af27..64956ac 100644
  }
  
  fn play(ring: &Arc<Ring>, sample_rate: u32) -> Result<Playback, AudioError> {
-     let alsa = Alsa::load()?;
--    let pcm = match alsa.open_pcm(sample_rate) {
--        Ok(pcm) => Some(pcm),
-+    let (pcm, rate) = match alsa.open_pcm(sample_rate) {
-+        Ok((pcm, rate)) => (Some(pcm), rate),
-         Err(e) => {
-             eprintln!("slot: audio: {e}, retrying");
--            None
-+            (None, sample_rate)
-         }
-     };
--    ring.reopen(sample_rate);
-+    // The rate the device accepted, not the one we asked for: emu.rs builds its
-+    // resampler from whatever the ring reports, so this is what makes a device
-+    // that will not run at the core's rate work at all.
-+    ring.reopen(rate);
-     Ok(Playback {
-         alsa,
-         pcm,
--        rate: sample_rate,
-+        rate,
-         failing: pcm.is_none(),
+@@ -207,6 +231,7 @@ fn play(ring: &Arc<Ring>, sample_rate: u32) -> Result<Playback, AudioError> {
+         pcm: None,
+         rate: sample_rate,
+         failing: false,
 +        said_write_error: std::cell::Cell::new(false),
      })
  }
  
-@@ -232,9 +260,16 @@ impl Playback {
+@@ -225,9 +250,16 @@ impl Playback {
                      eprintln!("slot: audio released after silence");
                  }
                  (None, true) => match self.alsa.open_pcm(self.rate) {
@@ -88,7 +70,7 @@ index 7d7af27..64956ac 100644
                          self.failing = false;
                      }
                      Err(e) => {
-@@ -259,6 +294,9 @@ impl Playback {
+@@ -252,6 +284,9 @@ impl Playback {
      }
  
      fn write(&self, pcm: *mut c_void, buf: &[i16]) -> bool {
@@ -98,7 +80,7 @@ index 7d7af27..64956ac 100644
          let mut written = 0;
          while written < PERIOD_FRAMES {
              let at = written * CHANNELS as usize;
-@@ -270,7 +308,39 @@ impl Playback {
+@@ -263,7 +298,39 @@ impl Playback {
                  )
              };
              if frames < 0 {
@@ -717,7 +699,7 @@ index 1114105..3db2fef 100644
      capacity_frames / 2
  }
 diff --git a/crates/slot/src/emu.rs b/crates/slot/src/emu.rs
-index 5ec0f33..70cd90f 100644
+index fdd6624..bac01b6 100644
 --- a/crates/slot/src/emu.rs
 +++ b/crates/slot/src/emu.rs
 @@ -32,6 +32,11 @@ const SNAPSHOT_EVERY: u32 = 2;
@@ -732,7 +714,7 @@ index 5ec0f33..70cd90f 100644
  const RATE_WINDOW: u32 = 300;
  
  const TRACE_EVERY: u64 = 300;
-@@ -187,7 +192,22 @@ impl EmuHandle {
+@@ -195,7 +200,22 @@ impl EmuHandle {
          let worker_link = link.clone();
          let join = std::thread::Builder::new()
              .name("slot-emu".into())
@@ -756,7 +738,7 @@ index 5ec0f33..70cd90f 100644
              .ok();
          if join.is_none() {
              shared
-@@ -805,7 +825,8 @@ impl Worker {
+@@ -815,7 +835,8 @@ impl Worker {
                      if crate::session::trace() && paced.is_multiple_of(TRACE_EVERY) {
                          let (dropped, starved) = (ring.overruns(), ring.underruns());
                          eprintln!(
@@ -766,7 +748,7 @@ index 5ec0f33..70cd90f 100644
                          );
                      }
                  }
-@@ -848,7 +869,28 @@ impl Worker {
+@@ -858,7 +879,28 @@ impl Worker {
              let now = Instant::now();
              match deadline.checked_duration_since(now) {
                  Some(wait) => std::thread::sleep(wait),

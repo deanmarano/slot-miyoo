@@ -115,7 +115,7 @@ index 582cc4f..a461198 100644
      let (_, _, lw, lh) = spec(shape_of(cart)).label;
      (lw, lh)
 diff --git a/crates/slot-ui/src/lib.rs b/crates/slot-ui/src/lib.rs
-index 52837b3..e916008 100644
+index 946662c..44c3326 100644
 --- a/crates/slot-ui/src/lib.rs
 +++ b/crates/slot-ui/src/lib.rs
 @@ -44,11 +44,11 @@ pub use board::{
@@ -136,10 +136,10 @@ index 52837b3..e916008 100644
  pub use clock::{clock_label, date_time_text, hhmm, set_clock_hint_face, ClockPicker, Field};
  pub use draw::{Canvas, Draw, TexId, OUT_H, OUT_W};
 diff --git a/crates/slot-ui/src/shelf.rs b/crates/slot-ui/src/shelf.rs
-index 7174897..7557427 100644
+index 87fd404..2040e2b 100644
 --- a/crates/slot-ui/src/shelf.rs
 +++ b/crates/slot-ui/src/shelf.rs
-@@ -493,7 +493,10 @@ impl Shelf {
+@@ -495,7 +495,10 @@ impl Shelf {
                  } else {
                      Placed { x, y, w, h }
                  };
@@ -151,7 +151,7 @@ index 7174897..7557427 100644
                  if let Some(tex) = self.interiors.get(i).copied().flatten() {
                      out.push(Draw::Tex {
                          x: bx,
-@@ -503,16 +506,16 @@ impl Shelf {
+@@ -505,16 +508,16 @@ impl Shelf {
                          tex,
                          alpha: alpha * dim,
                      });

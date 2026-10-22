@@ -35,10 +35,10 @@ Dean chose this over capping the budget alone, which would have left the
 removing it.
 
 diff --git a/crates/slot/src/emu.rs b/crates/slot/src/emu.rs
-index 70cd90f..87b3b5f 100644
+index bac01b6..d0a855a 100644
 --- a/crates/slot/src/emu.rs
 +++ b/crates/slot/src/emu.rs
-@@ -563,6 +563,12 @@ impl Worker {
+@@ -571,6 +571,12 @@ impl Worker {
          let mut out = Vec::new();
          let mut gated = (false, false);
          let rewind = RewindThread::spawn(REWIND_BYTES);
@@ -51,7 +51,7 @@ index 70cd90f..87b3b5f 100644
          let mut since_snapshot = 0;
          let mut cost = FrameCost::seed();
          let mut post_cost = PRESENT - FAST_TARGET;
-@@ -793,9 +799,21 @@ impl Worker {
+@@ -803,9 +809,21 @@ impl Worker {
                  {
                      since_snapshot = 0;
                  }

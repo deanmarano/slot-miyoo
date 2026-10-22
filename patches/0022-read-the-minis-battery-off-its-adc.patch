@@ -32,7 +32,7 @@ Third in the chain, after the vendor tool and before sysfs: a handheld with
 
 Read on the handheld: the gauge shows a percentage where it showed nothing.
 
-Applies to upstream f4b7bc3.
+Applies to upstream 91499a9.
 
 diff --git a/Cargo.lock b/Cargo.lock
 index 05625cd..39c1406 100644
@@ -60,10 +60,10 @@ index 296b6e5..11265e9 100644
  [dev-dependencies]
  tempfile = { workspace = true }
 diff --git a/crates/slot-power/src/device.rs b/crates/slot-power/src/device.rs
-index 28b4ad1..8620554 100644
+index 0636e62..225b1d7 100644
 --- a/crates/slot-power/src/device.rs
 +++ b/crates/slot-power/src/device.rs
-@@ -510,6 +510,90 @@ fn read_number(path: &Path) -> Option<u32> {
+@@ -536,6 +536,90 @@ fn read_number(path: &Path) -> Option<u32> {
  /// vendor ioctls, which is a lot of machinery for the same number.
  const AXP_TOOL: &str = "/customer/app/axp_test";
  
@@ -154,7 +154,7 @@ index 28b4ad1..8620554 100644
  fn axp_battery() -> Option<Battery> {
      if !Path::new(AXP_TOOL).is_file() {
          return None;
-@@ -629,6 +713,12 @@ impl Platform for DevicePlatform {
+@@ -655,6 +739,12 @@ impl Platform for DevicePlatform {
          if let Some(b) = axp_battery() {
              return Some(b);
          }
@@ -167,7 +167,7 @@ index 28b4ad1..8620554 100644
          let dir = self.battery.as_ref()?;
          let percent = read_number(&dir.join("capacity"))?;
          Some(Battery {
-@@ -881,6 +971,30 @@ mod miyoo_bitmap_tests {
+@@ -910,6 +1000,30 @@ mod miyoo_bitmap_tests {
          has_bit_in_words(GPIO_KEYS, bit, 32)
      }
  

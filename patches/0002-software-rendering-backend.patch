@@ -87,10 +87,11 @@ index 664d1ab..059cd0e 100644
      fn drop(&mut self) {
          unsafe {
 diff --git a/crates/slot-gfx/src/lib.rs b/crates/slot-gfx/src/lib.rs
-index fffb534..89e7e86 100644
+index 9c8d1af..ff0af66 100644
 --- a/crates/slot-gfx/src/lib.rs
 +++ b/crates/slot-gfx/src/lib.rs
-@@ -1,32 +1,46 @@
+@@ -7,33 +7,47 @@ macro_rules! eprintln {
+ 
  mod bezel;
  mod draw;
 +#[cfg(not(feature = "software"))]
@@ -3419,7 +3420,7 @@ index b3ee812..99480a7 100644
  [dependencies]
  slot-gfx = { path = "../slot-gfx", default-features = false }
 diff --git a/crates/slot/src/device_app.rs b/crates/slot/src/device_app.rs
-index 0176677..23ca104 100644
+index a8b8426..1b851c1 100644
 --- a/crates/slot/src/device_app.rs
 +++ b/crates/slot/src/device_app.rs
 @@ -21,8 +21,20 @@ struct Pacer {
@@ -3496,9 +3497,9 @@ index 0176677..23ca104 100644
          self.works[self.next] = work;
          self.next = (self.next + 1) % WORK_WINDOW;
          self.work = self.works.iter().copied().max().unwrap_or(work);
-@@ -140,7 +179,21 @@ pub fn run() {
-         .name("slot-bootlogo".into())
-         .spawn(move || slot::bootlogo::refresh(&card));
+@@ -143,7 +182,21 @@ pub fn run() {
+             slot::root::sweep_temps(&card);
+         });
      let mut drawn = false;
 -    frontend.drive_emulator();
 +    // Driven mode chains the core to the display: the emulator waits for a
@@ -3519,7 +3520,7 @@ index 0176677..23ca104 100644
      let mut pacer = Pacer::new();
      let (mut frames, mut missed, mut early) = (0u32, 0u32, 0u32);
      loop {
-@@ -168,6 +221,15 @@ pub fn run() {
+@@ -177,6 +230,15 @@ pub fn run() {
          }
          let swap_took = swap.elapsed();
          slot::latency::swapped(swap_took.as_secs_f64() * 1000.0);
@@ -3535,7 +3536,7 @@ index 0176677..23ca104 100644
          let dropped = pacer.swapped(work, swap_took > Duration::from_millis(1));
          if slot::latency::tracing() {
              frames += 1;
-@@ -175,10 +237,12 @@ pub fn run() {
+@@ -184,10 +246,12 @@ pub fn run() {
              early += u32::from(swap_took > pacer.period / 2);
              if frames == 600 {
                  eprintln!(

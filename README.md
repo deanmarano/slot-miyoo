@@ -72,8 +72,7 @@ Upstream lives in `upstream/slot` as a **pinned, read-only submodule**. Every
 change this port makes to upstream files is a patch in `patches/`, applied to
 that working tree by `task patch`; a patch that no longer applies is a hard
 error, so an upstream bump cannot quietly drop one. The submodule was last
-bumped on 2026-10-20, to **`v1.7.0+32`** (upstream `f4b7bc3`, 32 commits past
-the v1.7.0 tag).
+bumped on 2026-10-22, to upstream **`v1.8.1`**.
 
 The port is feasible because `slot-ui` makes no graphics calls at all — it
 emits a display list of six `Draw` variants, and all the GL sits behind one

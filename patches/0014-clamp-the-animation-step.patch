@@ -34,7 +34,7 @@ unimported for the test module when 0009 dropped it from the file's own uses,
 and nothing compiled the test binary until this patch added a test to it.
 
 diff --git a/crates/slot-ui/src/lib.rs b/crates/slot-ui/src/lib.rs
-index df8bfc3..52837b3 100644
+index 0d43c35..946662c 100644
 --- a/crates/slot-ui/src/lib.rs
 +++ b/crates/slot-ui/src/lib.rs
 @@ -80,7 +80,7 @@ pub use quick_menu::{
@@ -47,7 +47,7 @@ index df8bfc3..52837b3 100644
      gb_plastics, gb_table_shells, gba_plastics, gba_shell_for,
      lookup_order_is_exact_then_family_then_default, shell_for, shell_presets, table_keys, Finish,
 diff --git a/crates/slot-ui/src/shelf.rs b/crates/slot-ui/src/shelf.rs
-index 31cc357..7174897 100644
+index 3828ccc..87fd404 100644
 --- a/crates/slot-ui/src/shelf.rs
 +++ b/crates/slot-ui/src/shelf.rs
 @@ -27,7 +27,9 @@ pub fn rest_y(h: f32) -> f32 {
@@ -62,7 +62,7 @@ index 31cc357..7174897 100644
  
  const SLOTS: i32 = 3;
 diff --git a/crates/slot/src/frontend.rs b/crates/slot/src/frontend.rs
-index 8f77d6b..c40019f 100644
+index 4e3a874..f3877a5 100644
 --- a/crates/slot/src/frontend.rs
 +++ b/crates/slot/src/frontend.rs
 @@ -3,6 +3,26 @@ use std::time::{Duration, Instant};
@@ -92,7 +92,7 @@ index 8f77d6b..c40019f 100644
  use slot_input::{InputSource, Millis};
  use slot_power::{Platform, Power};
  use slot_store::{format_stamp, BezelPick, Platform as Console};
-@@ -706,7 +726,7 @@ impl Frontend {
+@@ -708,7 +728,7 @@ impl Frontend {
              return;
          }
          self.session.feed(events, now);
@@ -101,7 +101,7 @@ index 8f77d6b..c40019f 100644
          self.last = Instant::now();
          self.session.update(dt);
      }
-@@ -1247,3 +1267,32 @@ fn upload_rgba(
+@@ -1265,3 +1285,32 @@ fn upload_rgba(
          }
      }
  }

@@ -18,13 +18,13 @@ actually true -- the same reason `0004` reads them as 32-bit words.
 A device with volume keys is untouched: the Mini Flip and the Mini Plus keep
 their stored level and their HUD.
 
-Applies to upstream f4b7bc3.
+Applies to upstream 91499a9.
 
 diff --git a/crates/slot/src/app.rs b/crates/slot/src/app.rs
-index 9faaf89..511074c 100644
+index fa19ba4..8a3d16b 100644
 --- a/crates/slot/src/app.rs
 +++ b/crates/slot/src/app.rs
-@@ -2992,6 +2992,16 @@ impl App {
+@@ -3091,6 +3091,16 @@ impl App {
          self.level()
      }
  
@@ -42,7 +42,7 @@ index 9faaf89..511074c 100644
          if self.headphones {
              self.state.volume_hp
 diff --git a/crates/slot/src/device_app.rs b/crates/slot/src/device_app.rs
-index 60689a0..6c13ad7 100644
+index 17bd3af..42d2a1e 100644
 --- a/crates/slot/src/device_app.rs
 +++ b/crates/slot/src/device_app.rs
 @@ -172,6 +172,15 @@ pub fn run() {
@@ -62,10 +62,10 @@ index 60689a0..6c13ad7 100644
      slot::boot_time::mark("faces");
      frontend.upload_bezel(&mut compositor, window);
 diff --git a/crates/slot/src/frontend.rs b/crates/slot/src/frontend.rs
-index 9d36fc2..310e8b3 100644
+index 576d432..537a743 100644
 --- a/crates/slot/src/frontend.rs
 +++ b/crates/slot/src/frontend.rs
-@@ -754,6 +754,11 @@ impl Frontend {
+@@ -756,6 +756,11 @@ impl Frontend {
          self.session.app_mut().set_left_stick(present);
      }
  

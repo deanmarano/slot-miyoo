@@ -25,10 +25,10 @@ Applies on top of 0004, which added the fallback, and 0008, which owns the
 backlight arm just above the line this changes.
 
 diff --git a/crates/slot-power/src/device.rs b/crates/slot-power/src/device.rs
-index 0a8af51..28b4ad1 100644
+index a63373a..0636e62 100644
 --- a/crates/slot-power/src/device.rs
 +++ b/crates/slot-power/src/device.rs
-@@ -243,11 +243,21 @@ impl DevicePlatform {
+@@ -245,11 +245,21 @@ impl DevicePlatform {
              Some(m) => format!("motor {}", m.name),
              None => "no motor".to_string(),
          };

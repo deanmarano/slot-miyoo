@@ -9,6 +9,19 @@ building this; [docs/INSTALL.md](../docs/INSTALL.md) is the install page, and
 
 ## Status
 
+**Bumped to upstream `v1.8.1` on 2026-10-22**, 18 commits and two releases on
+from `f4b7bc3`. Four patches needed hand-work and one core patch went away:
+
+| | |
+|---|---|
+| `0005` audio | upstream leaves the audio device closed at boot now, so the launcher's own startup sound can play (`07183c8`). The MI_AO sink follows: it keeps upstream's deferred open and tells the ring the accepted rate when it happens rather than at boot |
+| `0007` sticker | upstream prints the release version on it (`ea438a0`); the port line moves above the version so upstream's new test -- the version sits directly over SEE README -- passes unchanged. It also says MIYOO rather than MINI FLIP, there being three handhelds now |
+| `0020` panel | upstream's new tests and one new source file use `OUT_W`/`OUT_H` and `Canvas::FRAMED`, which this port made runtime; renamed in place |
+| **mGBA MBC2** | **dropped.** Upstream now ships Vicki Pfau's own fix (`543a19758`, closing their #137 -- someone else hit it on Kirby's Pinball Land, the same cart). Theirs is a superset: it fixes `GBMBCSwitchSramHalfBank` too. `cores/mgba/patches/` is down to the ROM-path patch |
+
+Not yet run on the handhelds.
+
+
 **It runs games on the handheld.** GB, GBC and GBA, at roughly the frame budget,
 with working input and a software renderer standing in for the GPU this device
 does not have.

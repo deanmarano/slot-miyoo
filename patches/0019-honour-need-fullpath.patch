@@ -72,7 +72,7 @@ index 1a88c51..1cda16b 100644
              set_video_refresh: get!("retro_set_video_refresh"),
              set_audio_sample: get!("retro_set_audio_sample"),
 diff --git a/crates/slot-retro/src/libretro.rs b/crates/slot-retro/src/libretro.rs
-index c5d59f0..0a4310d 100644
+index 3318856..5ef444e 100644
 --- a/crates/slot-retro/src/libretro.rs
 +++ b/crates/slot-retro/src/libretro.rs
 @@ -567,14 +567,27 @@ impl RetroCore for LibretroCore {

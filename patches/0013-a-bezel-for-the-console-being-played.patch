@@ -31,7 +31,7 @@ and ping-ponging the edge rows outward exactly as this did. That code is gone
 from here and what remains is only the part that is about this backend: not
 redrawing what has not changed.
 
-Applies to upstream f4b7bc3.
+Applies to upstream 91499a9.
 
 diff --git a/crates/slot-gfx/src/soft/mod.rs b/crates/slot-gfx/src/soft/mod.rs
 index c8640ad..da0f29e 100644

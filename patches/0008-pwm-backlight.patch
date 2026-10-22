@@ -33,10 +33,10 @@ conclusion about its own ladder in #100.
 Applies on top of 0004, which also touches these two files.
 
 diff --git a/crates/slot-power/src/device.rs b/crates/slot-power/src/device.rs
-index 39d45f5..0a8af51 100644
+index c69acd4..a63373a 100644
 --- a/crates/slot-power/src/device.rs
 +++ b/crates/slot-power/src/device.rs
-@@ -82,9 +82,55 @@ const EVIOCSFF: c_ulong = 0x4030_4580;
+@@ -84,9 +84,55 @@ const EVIOCSFF: c_ulong = 0x4030_4580;
  
  const DISPDBG_MAX: u32 = 255;
  
@@ -92,7 +92,7 @@ index 39d45f5..0a8af51 100644
  }
  
  enum Led {
-@@ -123,6 +169,7 @@ impl DevicePlatform {
+@@ -125,6 +171,7 @@ impl DevicePlatform {
                  dbg.join("param")
                      .is_file()
                      .then_some(Backlight::Dispdbg(dbg))
@@ -100,7 +100,7 @@ index 39d45f5..0a8af51 100644
              }
          };
          let battery = first_dir(&sysfs.join("class/power_supply"), is_battery);
-@@ -139,6 +186,13 @@ impl DevicePlatform {
+@@ -141,6 +188,13 @@ impl DevicePlatform {
                  Led::Mono { dir, max }
              }
          });
@@ -114,7 +114,7 @@ index 39d45f5..0a8af51 100644
          DevicePlatform {
              root,
              sysfs: sysfs.to_path_buf(),
-@@ -182,6 +236,7 @@ impl DevicePlatform {
+@@ -184,6 +238,7 @@ impl DevicePlatform {
          let backlight = match &self.backlight {
              Some(Backlight::Class(dir)) => leaf(dir),
              Some(Backlight::Dispdbg(_)) => "dispdbg".to_string(),
@@ -122,7 +122,7 @@ index 39d45f5..0a8af51 100644
              None => "no backlight".to_string(),
          };
          let motor = match &self.motor {
-@@ -542,6 +597,21 @@ impl Platform for DevicePlatform {
+@@ -568,6 +623,21 @@ impl Platform for DevicePlatform {
                  write(dir.join("param"), value.to_string());
                  write(dir.join("start"), "1".to_string());
              }
