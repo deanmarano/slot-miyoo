@@ -1,0 +1,84 @@
+list the Switch Online Game Boy palettes
+
+This changes what the Palette row offers rather than making upstream
+work here, and it only does anything with the matching mGBA core patch
+(cores/mgba/patches/gb-nso-palettes.patch).
+
+slot never sends mGBA a colour, only the name of one of the core's
+presets, and GbPalette is the hard-coded list of those names. mGBA
+cannot load a palette from a file, so the two shades of green that
+Nintendo's Game Boy app on Switch Online uses for its original and
+Pocket looks can only be offered by adding them to both lists. This is
+the slot half: "NSO DMG" and "NSO Pocket", placed after "GB Light" so
+the monochrome palettes stay together and SELECT + L2 / R2 reaches them
+in a short walk from the default.
+
+The list is walked by name, and slot_state.txt stores the name, so
+nothing saved moves. A core built without the patch ignores a name it
+does not know and keeps the previous palette, so a mismatched pair
+degrades to a palette that does not change rather than a crash.
+
+diff --git a/crates/slot-store/src/gb_palette.rs b/crates/slot-store/src/gb_palette.rs
+index 39280db..4544540 100644
+--- a/crates/slot-store/src/gb_palette.rs
++++ b/crates/slot-store/src/gb_palette.rs
+@@ -1,8 +1,10 @@
+-const NAMES: [&str; 48] = [
++const NAMES: [&str; 50] = [
+     "Grayscale",
+     "DMG Green",
+     "GB Pocket",
+     "GB Light",
++    "NSO DMG",
++    "NSO Pocket",
+     "GBC Brown ↑",
+     "GBC Red ↑A",
+     "GBC Dark Brown ↑B",
+diff --git a/crates/slot-store/tests/gb_palette.rs b/crates/slot-store/tests/gb_palette.rs
+index 6c233b1..65170df 100644
+--- a/crates/slot-store/tests/gb_palette.rs
++++ b/crates/slot-store/tests/gb_palette.rs
+@@ -1,15 +1,17 @@
+ use slot_store::{GbColors, GbPalette, SlotState};
+ 
+ #[test]
+-fn the_list_is_mgba_s_48_palettes_in_its_order() {
++fn the_list_is_the_core_s_palettes_in_its_order() {
+     let names: Vec<&str> = GbPalette::all().map(GbPalette::core_name).collect();
+     assert_eq!(names.len(), GbPalette::COUNT);
+-    assert_eq!(GbPalette::COUNT, 48);
++    assert_eq!(GbPalette::COUNT, 50);
+     assert_eq!(names[0], "Grayscale");
+     assert_eq!(names[1], "DMG Green");
+-    assert_eq!(names[14], "GBC Dark Green →A");
+-    assert_eq!(names[16], "SGB 1-A");
+-    assert_eq!(names[47], "SGB 4-H");
++    assert_eq!(names[4], "NSO DMG");
++    assert_eq!(names[5], "NSO Pocket");
++    assert_eq!(names[16], "GBC Dark Green →A");
++    assert_eq!(names[18], "SGB 1-A");
++    assert_eq!(names[49], "SGB 4-H");
+ }
+ 
+ #[test]
+@@ -64,7 +66,7 @@
+ #[test]
+ fn colours_run_auto_then_every_palette_and_wrap() {
+     let all: Vec<GbColors> = GbColors::all().collect();
+-    assert_eq!(all.len(), 49);
++    assert_eq!(all.len(), 51);
+     assert_eq!(all[0], GbColors::Auto);
+     assert_eq!(all[1], GbColors::Palette(named("Grayscale")));
+     assert_eq!(GbColors::Auto.prev(), GbColors::Palette(named("SGB 4-H")));
+diff --git a/crates/slot-ui/tests/toast.rs b/crates/slot-ui/tests/toast.rs
+--- a/crates/slot-ui/tests/toast.rs
++++ b/crates/slot-ui/tests/toast.rs
+@@ -53,7 +53,7 @@
+         "a banner was added or dropped: every face is uploaded by its place in this list"
+     );
+     let palettes = GbColors::all().count();
+-    assert_eq!(palettes, 49);
++    assert_eq!(palettes, 51);
+     assert_eq!(
+         all[19..19 + palettes],
+         GbColors::all().map(Toast::Palette).collect::<Vec<_>>()[..],
