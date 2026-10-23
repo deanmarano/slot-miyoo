@@ -20,6 +20,27 @@ conf=/appconfigs/wpa_supplicant.conf
 
 log() { echo "$@" >> "$out"; }
 
+# The vendor's radio tools are not on PATH when slot is the boot process.
+# Allium's hook exported its own bin directory; stock's does not, and
+# wpa_supplicant lives in the firmware payload on the card -- miyoo354/app on
+# a Mini Plus, miyoo285 on a Flip, miyoo on a Mini -- or in /customer/app.
+# Calling it bare found nothing and the radio never associated, with no error
+# anywhere a person would look.
+find_tool() {
+	name=$1
+	if command -v "$name" > /dev/null 2>&1; then
+		echo "$name"
+		return
+	fi
+	for d in "$root"/miyoo285/app "$root"/miyoo354/app "$root"/miyoo/app /customer/app; do
+		if [ -x "$d/$name" ]; then
+			echo "$d/$name"
+			return
+		fi
+	done
+	echo "$name"
+}
+
 : > "$out"
 log "slot net — $(date 2>/dev/null)"
 log ""
@@ -76,6 +97,9 @@ log "uptime at start: $(cut -d" " -f1 /proc/uptime 2>/dev/null)s"
 # works.
 renice -n -5 $$ > /dev/null 2>&1 || true
 
+log "wpa_supplicant: $(find_tool wpa_supplicant)"
+log "wpa_cli:        $(find_tool wpa_cli)"
+log "credentials:    $([ -r "$creds" ] && echo "$creds" || echo "(none -- using whatever /appconfigs already holds)")"
 log "wlan0 before wifi-on: $(ifconfig wlan0 > /dev/null 2>&1 && echo present || echo absent)"
 log "module before wifi-on: $(grep -c 8188fu /proc/modules 2>/dev/null)"
 log ""
@@ -90,11 +114,40 @@ log ""
 attempt=1
 while :; do
 	if ! ifconfig wlan0 > /dev/null 2>&1 || ! pgrep wpa_supplicant > /dev/null 2>&1; then
-		[ -x "$scripts/wifi-on.sh" ] && sh "$scripts/wifi-on.sh" > /dev/null 2>&1
+		if [ -x "$scripts/wifi-on.sh" ]; then
+			sh "$scripts/wifi-on.sh" > /dev/null 2>&1
+		else
+			# No Allium on this card, so bring the radio up the way the
+			# firmware does. Stock's /customer/main already insmods
+			# 8188fu.ko from the card root when it mounts, so the module is
+			# usually there and this is the interface and the supplicant;
+			# the insmod is kept for the case where it is not.
+			grep -q 8188fu /proc/modules 2>/dev/null ||
+				insmod "$root/8188fu.ko" > /dev/null 2>&1
+			# Power the radio's rail before expecting an interface. The
+			# driver registers without it -- "usbcore: registered new
+			# interface driver rtl8188fu" in the kernel log -- and wlan0
+			# never appears, which is what a Mini Plus showed for two boots:
+			# module loaded, wlan0 ABSENT, supplicant with nothing to attach
+			# to. Allium's wifi-on.sh does the same call, and so does stock's
+			# own MainUI.
+			wifion=$(find_tool axp_test)
+			if [ -x "$wifion" ] || command -v axp_test > /dev/null 2>&1; then
+				"$wifion" wifion > /dev/null 2>&1
+				sleep 2
+				log "powered the radio with $wifion wifion"
+			else
+				log "no axp_test: the radio's rail is whatever the firmware left it"
+			fi
+			ifconfig wlan0 up > /dev/null 2>&1
+			pgrep wpa_supplicant > /dev/null 2>&1 ||
+				"$(find_tool wpa_supplicant)" -B -D nl80211 -i wlan0 -c "$conf" \
+					> /dev/null 2>&1
+		fi
 		log "attempt $attempt at $(cut -d" " -f1 /proc/uptime 2>/dev/null)s: brought the radio up, wlan0 $(ifconfig wlan0 > /dev/null 2>&1 && echo present || echo ABSENT), module $(grep -c 8188fu /proc/modules 2>/dev/null)"
 	else
 		# Already up and supplicant running: nudge it rather than reset it.
-		wpa_cli -i wlan0 reassociate > /dev/null 2>&1
+		"$(find_tool wpa_cli)" -i wlan0 reassociate > /dev/null 2>&1
 		log "attempt $attempt at $(cut -d" " -f1 /proc/uptime 2>/dev/null)s: radio already up, reassociating"
 	fi
 
@@ -107,7 +160,7 @@ while :; do
 	last=""
 	drops=0
 	while [ $n -lt 90 ]; do
-		state=$(wpa_cli -i wlan0 status 2>/dev/null | sed -n 's/^wpa_state=//p')
+		state=$("$(find_tool wpa_cli)" -i wlan0 status 2>/dev/null | sed -n 's/^wpa_state=//p')
 		if [ "$state" != "$last" ]; then
 			log "    ${n}s: ${state:-unknown}"
 			# 4WAY_HANDSHAKE falling back to scanning is also what this radio
@@ -161,7 +214,7 @@ while :; do
 
 	log "  ${assoc:+associated but no lease}${assoc:-no association} after ${n}s"
 	log "  supplicant: $(pgrep wpa_supplicant > /dev/null 2>&1 && echo running || echo NOT running)"
-	log "  wpa_state: $(wpa_cli -i wlan0 status 2>/dev/null | sed -n 's/^wpa_state=//p')"
+	log "  wpa_state: $("$(find_tool wpa_cli)" -i wlan0 status 2>/dev/null | sed -n 's/^wpa_state=//p')"
 	# Only on the first two attempts, so the file stays readable: is the network
 	# even visible? This radio is 2.4 GHz only.
 	if [ "$attempt" -le 2 ]; then
@@ -212,7 +265,7 @@ watch_log() {
 }
 
 link_up() {
-	[ "$(wpa_cli -i wlan0 status 2>/dev/null | sed -n 's/^wpa_state=//p')" = "COMPLETED" ] &&
+	[ "$("$(find_tool wpa_cli)" -i wlan0 status 2>/dev/null | sed -n 's/^wpa_state=//p')" = "COMPLETED" ] &&
 		[ -n "$(ifconfig wlan0 2>/dev/null | sed -n 's/.*inet addr:\([0-9.]*\).*/\1/p')" ]
 }
 
@@ -244,7 +297,7 @@ watchdog() {
 		lost=$((lost + 1))
 		[ "$lost" = 1 ] && watch_log "watchdog: link lost at $(cut -d" " -f1 /proc/uptime 2>/dev/null)s"
 		if [ "$lost" -le 2 ]; then
-			wpa_cli -i wlan0 reassociate > /dev/null 2>&1
+			"$(find_tool wpa_cli)" -i wlan0 reassociate > /dev/null 2>&1
 		else
 			[ -x "$scripts/wifi-on.sh" ] && sh "$scripts/wifi-on.sh" > /dev/null 2>&1
 			watch_log "watchdog: reassociate did not take, brought the radio up again"

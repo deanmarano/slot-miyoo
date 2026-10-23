@@ -20,3 +20,6 @@
 # `task release` stages the card tree and the zip here.
 /release
 /slot-wifi.txt
+
+# Claude Code scratch: worktrees and session state, not part of the port.
+.claude/

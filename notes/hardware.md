@@ -1489,3 +1489,40 @@ Flip -- runs at full speed with clean audio, on gpSP. This is the first
 device to meet it with swap, so the comparison with the Flip's numbers is not
 like for like; frame times from a card with no trace armed are still to be
 read.
+
+## Frame times in a GBA game, Mini Plus (2026-10-23)
+
+Mario Kart on gpSP, stock firmware, `SLOT_TRACE_LATENCY` armed -- which costs
+something itself, writing to the card every frame, so read the differences
+rather than the absolutes.
+
+| | work | missed of 600 | out | sprites |
+|---|---|---|---|---|
+| plain | 5.9 ms | 26 | 4.4 ms | 0 |
+| blue light, as it was | 18.2 ms | 451 | 7.9 ms | 5.0 ms over 1 draw |
+| blue light, now | 6.1 ms | 101 | 5.0 ms | 0 |
+
+Two things were being paid for every frame, and the trace named them both.
+
+**The Advance SP shell was a full-canvas blit**, 5.0-5.5 ms. Upstream stopped
+handing the bezel to the compositor as an image in `9d2bc24` and started
+drawing it as a texture in the display list; `set_bezel` has had no callers
+since, so `0013`'s "paint it once into the surround" was bypassed and nobody
+noticed, because nothing measured a GBA game in flight. `0026` takes it back
+into the surround and restores the direct path with it.
+
+**Blue light cost a second pass over the panel**, and now costs nothing: the
+gain rides in the column mask the game pass already multiplies by. See
+`0026` for the three ways that can go wrong and what guards each.
+
+**Grading on the way to the panel is not an option.** Applying a lookup to
+the rows as they are written means reading each byte back from mmapped
+`/dev/fb0`: **160-200 ms a frame**, against 4-5 ms for the same loop over the
+canvas. Framebuffer memory reads like a device, not like RAM.
+
+**Audio held through all of it.** At 200 ms a frame -- a twelvefold overrun --
+there were no pops and no stretching: the sink thread runs at `setpriority`
+-10 with its own ring, and the ring is deep enough that the render loop
+falling over does not reach it. That is the first time the audio path has
+been pushed that hard, and it is the strongest evidence yet for the priority
+work in `0003` and the MI_AO sink in `0005`.

@@ -1,0 +1,467 @@
+keep the shell out of the frame, and the blue-light filter in the mask
+
+Two things this backend was paying for every frame in a GBA game, found by
+arming the latency trace on a Mini Plus and reading what it said rather than
+guessing which stage was slow.
+
+**The Advance SP shell was being blitted over the game, every frame.**
+Upstream changed how it reaches the screen in 9d2bc24: it used to be handed
+to the compositor as an image, which `0013` paints once into the surround,
+and now it is uploaded as a texture and drawn in the display list. Nothing
+calls `set_bezel` any more, so `0013` was quietly bypassed and this port has
+been paying a 640x480 blit since the previous bump -- 5.0-5.5 ms a frame,
+measured -- and losing the direct path with it, because the list was no
+longer just the game.
+
+`draw_list` now recognises `[Game, Tex]` where the texture covers the canvas
+and is seated at the top, takes it into the surround, and draws the game
+alone. While the strip is *moving* -- the eject animation slides it -- it
+stays in the frame, because a moving thing belongs there. The list reads
+[Game, Tex] and not the other way round: the shell is drawn over the game,
+and matching it backwards silently does nothing.
+
+**Blue light cost a whole extra pass over the panel.** The gain was applied
+when the canvas was copied out, and the direct path was skipped whenever it
+was on, so the filter turned a 5 ms frame into 18 ms and dropped three
+quarters of them.
+
+It now rides in the column mask. The game pass already multiplies every
+column by an 8.8 factor -- the LCD3x grid and the brightness -- and the gain
+is folded into that when the table is built, which happens when the rect
+moves rather than per frame. The surround's shell is graded once as it is
+taken. Everything reaching the panel is then already warm, so the direct path
+runs with the filter on and blue light costs nothing per frame:
+
+| | before | after |
+|---|---|---|
+| filter on | work 18.2 ms, 451/600 missed, out 7.9 | work 6.1 ms, 101/600, out 5.0 |
+| filter off | work 5.9 ms, 26/600 missed | unchanged |
+
+Three traps, each with a guard, because this is a flag that has to agree with
+itself in two places and today produced two bugs of exactly that shape:
+
+  - **Double-grading.** The mask carries the gain only when the pass is bound
+    for the panel; the canvas path leaves it at 256 and `output_frame` grades
+    that copy as before. The destination is part of the column table's key,
+    so changing path rebuilds it.
+  - **Stale warmth.** The gain is in the key too, and the shell remembers
+    which gain it was graded with, so moving the filter rebuilds both.
+  - **Wrong channel.** The mask is in panel byte order, byte 0 blue, and the
+    test asserts each channel equals the table applied exactly once.
+
+One route was tried and rejected: applying a lookup to the rows as they were
+written to the panel. The destination is mmapped /dev/fb0, so the table has
+to read each byte back, and a read from framebuffer memory is not a read from
+RAM -- 160-200 ms a frame against 4-5 for the same loop over the canvas. That
+number is in the code as a comment, because it looks like a free optimisation
+every time you meet it.
+
+The graded copy on the canvas path is a straight row walk with the lookups
+folded in, rather than falling to the general per-pixel path: 24 ms a frame
+to 8 for the frames that still take it, which is menus and the shelf.
+
+Applies to upstream 91499a9.
+
+diff --git a/crates/slot-gfx/src/soft/mod.rs b/crates/slot-gfx/src/soft/mod.rs
+index 015e100..05d903a 100644
+--- a/crates/slot-gfx/src/soft/mod.rs
++++ b/crates/slot-gfx/src/soft/mod.rs
+@@ -160,6 +160,10 @@ struct Col {
+ /// of these does rather than every frame.
+ #[derive(Clone, Copy, PartialEq)]
+ struct ColKey {
++    /// The blue-light gain folded into the mask, 8.8 per channel. Part of the
++    /// key because the table has to be rebuilt when the filter moves -- and
++    /// when the destination changes, since only the panel-bound pass grades.
++    grade: [u16; 3],
+     x0: i32,
+     width: usize,
+     rx: u32,
+@@ -185,6 +189,7 @@ fn build_col(
+     lcd: bool,
+     img_w: u32,
+     mirror: bool,
++    grade: [u16; 3],
+ ) {
+     for i in 0..width {
+         // Mirroring here, once per source row, is what lets the rotated panel
+@@ -205,6 +210,14 @@ fn build_col(
+                 *k = (v * 256.0).round().clamp(0.0, 65535.0) as u16;
+             }
+         }
++        // The gain, folded into the mask that was going to be applied anyway.
++        // Grading the output cost a whole pass over the panel; grading here
++        // costs nothing per pixel, because this multiply already existed.
++        if grade != [256; 3] {
++            for (c, k) in k.iter_mut().enumerate() {
++                *k = ((*k as u32 * grade[c] as u32) >> 8) as u16;
++            }
++        }
+         out.push(Col { off: texel * 4, k });
+     }
+ }
+@@ -227,6 +240,10 @@ struct Game {
+     /// bezel is shown: the bezel covers that paper, and leaving the game pass
+     /// to write it would mean redrawing the bezel over it every frame.
+     crop: bool,
++    /// The blue-light gain in 8.8, panel byte order, or 256s for none. Folded
++    /// into the column mask when the pass is bound for the panel; the canvas
++    /// pass leaves it alone, because `output_frame` grades that copy.
++    gain8: [u16; 3],
+     /// Whether the Advance SP shell is behind the picture. Its opening is not
+     /// centred on the panel -- the art is 640x480 with the game at rows 6..421
+     /// and a 58px chin of lettering below -- so a picture shorter than the
+@@ -255,6 +272,7 @@ impl Game {
+             base: crate::power::PICTURE,
+             bottom: 0.0,
+             crop: false,
++            gain8: [256; 3],
+             shell: false,
+             fbo_scale: [1.0, 1.0],
+             col: Vec::new(),
+@@ -332,6 +350,19 @@ impl Game {
+     }
+ 
+     fn draw_inner(&mut self, mut dest: Dest<'_>, tex: Option<&Image>, mirror: bool) -> u8 {
++        // Grade on the way to the panel, and only there: `output_frame`
++        // grades the canvas as it copies it out, so doing both would warm the
++        // picture twice.
++        //
++        // In the mask, not over the output. Grading the written row meant
++        // reading each byte back from mmapped /dev/fb0, which is not a read
++        // from RAM -- 160-200 ms a frame on a Mini Plus against 4-5 for the
++        // same loop over the canvas. The column mask is a multiply this pass
++        // already does, so the filter costs nothing per pixel here.
++        let grade = match dest {
++            Dest::Fb(_) => self.gain8,
++            Dest::Canvas(_) => [256; 3],
++        };
+         let img = tex.unwrap_or(&self.frame);
+         // A still -- `Draw::Shot`, the frame kept behind a menu -- is the whole
+         // frame as it was, paper and all, so the crop that belongs to the live
+@@ -376,6 +407,7 @@ impl Game {
+         // loop has no branch and no second lookup).
+         let bits = |v: [f32; 4]| v.map(f32::to_bits);
+         let key = ColKey {
++            grade,
+             x0,
+             width,
+             mirror,
+@@ -401,6 +433,7 @@ impl Game {
+                 lcd,
+                 img.w,
+                 mirror,
++                grade,
+             );
+             self.col_key = Some(key);
+         }
+@@ -448,9 +481,11 @@ impl Game {
+                             e[ch] = s[ch] as u16 * c.k[ch];
+                         }
+                     } else {
+-                        // Outside the picture the x mask is 1, so 8.8 of itself.
++                        // Outside the picture the x mask is 1, so 8.8 of
++                        // itself -- times the gain, which the mask carries for
++                        // every column inside it.
+                         for ch in 0..3 {
+-                            e[ch] = (s[ch] as u16) << 8;
++                            e[ch] = s[ch] as u16 * grade[ch];
+                         }
+                     }
+                     e[3] = u16::MAX;
+@@ -476,6 +511,24 @@ impl Game {
+     }
+ }
+ 
++/// The blue-light gain as a byte table per channel, or `None` at step 0.
++///
++/// The canvas and the panel are both in panel order, so the table for byte 0
++/// is the blue gain rather than the red one.
++fn gain_table(gain: [f32; 3]) -> Option<[[u8; 256]; 3]> {
++    if gain == [1.0, 1.0, 1.0] {
++        return None;
++    }
++    let mut lut = [[0u8; 256]; 3];
++    for (c, table) in lut.iter_mut().enumerate() {
++        let g = [gain[2], gain[1], gain[0]][c];
++        for (v, out) in table.iter_mut().enumerate() {
++            *out = (v as f32 * g).clamp(0.0, 255.0) as u8;
++        }
++    }
++    Some(lut)
++}
++
+ /// How the panel is mounted relative to the framebuffer's scan order.
+ #[derive(Copy, Clone, PartialEq, Eq)]
+ enum Mount {
+@@ -784,6 +837,10 @@ pub struct Compositor {
+     /// Advance SP shell and says so in large letters, which is wrong under a
+     /// Game Boy game; `App::bezel_suits_platform` decides and says so here.
+     bezel_shown: bool,
++    /// The texture the surround's shell was taken from and the gain it was
++    /// graded with, so the same one arriving every frame is recognised and
++    /// not copied again -- and so moving the filter retakes it.
++    shell_tex: Option<(TexId, [f32; 3])>,
+     turn: Option<((u32, u32), bool)>,
+ }
+ 
+@@ -813,6 +870,7 @@ impl Compositor {
+             game_bezel: None,
+             surround: None,
+             bezel_shown: true,
++            shell_tex: None,
+             turn: None,
+         };
+         me.white = me.create_texture(1, 1, &[255, 255, 255, 255]);
+@@ -890,6 +948,45 @@ impl Compositor {
+         // canvas became the panel the picture is centred in it, and the
+         // surround around the picture is backdrop that end_frame clears when the
+         // rect moves or when this path is entered.
++        // Upstream draws the Advance SP shell as a full-canvas texture over
++        // the game, every frame, and has done since it started laying screens
++        // out from the panel size: on a GPU that is one quad and free. Here it
++        // is a 640x480 blit measured at 5.5 ms a frame on a Mini Plus, and it
++        // costs the direct path as well, because the list is no longer just
++        // the game.
++        //
++        // The art does not change while the cart is seated, so it is taken
++        // into the surround -- painted once, when the output rect moves -- and
++        // the game goes out on its own. Only when the strip is seated at the
++        // top: during the eject animation it slides, and a moving thing
++        // belongs in the frame.
++        // The shell is drawn *over* the game, so the list reads [Game, Tex].
++        // Matching it the other way round quietly does nothing, which cost a
++        // deploy and a puzzled look at a sprite stage that still said 1.
++        if let [Draw::Game, Draw::Tex {
++            x,
++            y,
++            w,
++            h,
++            tex,
++            alpha,
++        }] = items
++        {
++            let canvas = (self.canvas.w as f32, self.canvas.h as f32);
++            let seated = *x == 0.0 && *y == 0.0 && *w == canvas.0 && *h == canvas.1;
++            // Only when the frame is going straight to the panel. With a
++            // blue-light gain the frame goes via the canvas instead, and the
++            // surround is not part of that -- taking the shell out of the list
++            // then means nothing draws it at all. Reported as "the bezel only
++            // shows when the HUD is up", because a HUD puts a third item in
++            // the list and the strip comes back by the normal path.
++            if seated && *alpha == 1.0 {
++                self.take_surround_shell(*tex);
++                self.direct_game = true;
++                self.was_direct = true;
++                return;
++            }
++        }
+         self.direct_game = matches!(items, [Draw::Game]);
+         if self.direct_game {
+             self.was_direct = true;
+@@ -1201,6 +1298,9 @@ impl Compositor {
+ 
+     pub fn set_blue_light(&mut self, step: u8) {
+         self.gain = blue_light_gain(step);
++        // Panel byte order: byte 0 is blue. 8.8, to ride in the column mask.
++        self.game.gain8 = [self.gain[2], self.gain[1], self.gain[0]]
++            .map(|g| (g * 256.0).round().clamp(0.0, 65535.0) as u16);
+     }
+ 
+     pub fn set_screen_effect(&mut self, effect: ScreenEffect) {
+@@ -1311,6 +1411,41 @@ impl Compositor {
+         self.clear_left = PAGES;
+     }
+ 
++    /// Keep a full-canvas shell as the surround rather than redrawing it.
++    ///
++    /// Idempotent: the same texture every frame costs one comparison. A
++    /// different one repaints, which is what happens when the bezel is changed
++    /// from the menu or a Game Boy game follows an Advance one.
++    fn take_surround_shell(&mut self, tex: TexId) {
++        if self.shell_tex == Some((tex, self.gain)) && self.bezel.is_some() {
++            return;
++        }
++        let Some(mut img) = self
++            .textures
++            .get(tex.raw())
++            .and_then(|t| t.as_ref())
++            .map(|t| t.img.clone())
++        else {
++            return;
++        };
++        // Graded once, here, rather than every frame on the way out: the
++        // surround is painted when the rect moves and left alone after that,
++        // so this is the cheapest place in the whole frame to put the filter.
++        if let Some(lut) = gain_table(self.gain) {
++            for px in img.px.chunks_exact_mut(4) {
++                px[0] = lut[0][px[0] as usize];
++                px[1] = lut[1][px[1] as usize];
++                px[2] = lut[2][px[2] as usize];
++            }
++        }
++        self.shell_tex = Some((tex, self.gain));
++        self.bezel = Some(img);
++        self.bezel_shown = true;
++        self.game.shell = true;
++        self.surround = None;
++        self.clear_left = PAGES;
++    }
++
+     pub fn set_bezel(&mut self, w: u32, h: u32, rgba: &[u8]) {
+         // Stored top-down, unlike the GL path which pre-flips for its FBO.
+         self.bezel = Some(Image::from_rgba(w, h, rgba));
+@@ -1473,17 +1608,7 @@ impl Compositor {
+         // Blue-light gain as a lookup instead of a float multiply per channel
+         // per pixel; at step 0 it is the identity and the copy is straight.
+         let identity = self.gain == [1.0, 1.0, 1.0];
+-        let mut lut = [[0u8; 256]; 3];
+-        if !identity {
+-            for (c, table) in lut.iter_mut().enumerate() {
+-                // The canvas is in panel order, so the table for byte 0 is the
+-                // blue gain, not the red one.
+-                let gain = [self.gain[2], self.gain[1], self.gain[0]][c];
+-                for (v, out) in table.iter_mut().enumerate() {
+-                    *out = (v as f32 * gain).clamp(0.0, 255.0) as u8;
+-                }
+-            }
+-        }
++        let lut = gain_table(self.gain).unwrap_or([[0u8; 256]; 3]);
+ 
+         let x_start = x.max(0);
+         let x_end = (x + w).min(pw);
+@@ -1502,7 +1627,10 @@ impl Compositor {
+         // Blue light is what found this: its gain turns `identity` off, which
+         // skipped the direct write and copied an empty canvas. Reported as a
+         // black screen, or as the console body with no game inside it.
+-        let direct = self.direct_game && w == cw && h == ch && target.bgr && identity;
++        // The gain is not among these: the game pass carries it in its column
++        // mask and the surround was graded when it was taken, so everything
++        // this path writes is already warm. Blue light costs nothing here.
++        let direct = self.direct_game && w == cw && h == ch && target.bgr;
+         if self.direct_game && !direct {
+             let t = std::time::Instant::now();
+             let path = self.game.draw(&mut self.canvas, None);
+@@ -1550,7 +1678,11 @@ impl Compositor {
+         // which is a tight copy rather than the general per-pixel path. Leaving
+         // `half` out of this test was worth ~50 ms a frame of nothing, since
+         // this device is always rotated.
+-        let one_to_one = w == cw && h == ch && target.bgr && identity;
++        // `identity` is not required: a graded copy is the same walk through
++        // the rows with three lookups per pixel, and the canvas it reads is
++        // ordinary memory. What it replaces is the general per-pixel path,
++        // measured at 24 ms a frame on a Mini Plus against 5 for the copy.
++        let one_to_one = w == cw && h == ch && target.bgr;
+         let span = (x_end - x_start) as usize;
+ 
+         if one_to_one {
+@@ -1575,14 +1707,34 @@ impl Compositor {
+                 let Some(dst) = row.get_mut(o..o + span * 4) else {
+                     continue;
+                 };
+-                if half {
++                match (half, identity) {
+                     // Reverse the row, four bytes at a time. Iterators here so
+                     // the bounds checks fall away.
+-                    for (d, s) in dst.chunks_exact_mut(4).zip(src.chunks_exact(4).rev()) {
+-                        d.copy_from_slice(s);
++                    (true, true) => {
++                        for (d, s) in dst.chunks_exact_mut(4).zip(src.chunks_exact(4).rev()) {
++                            d.copy_from_slice(s);
++                        }
++                    }
++                    (false, true) => dst.copy_from_slice(src),
++                    // The same two walks, with the gain folded in. Written
++                    // rather than read back: the destination is the panel, and
++                    // reading that costs orders of magnitude more than RAM.
++                    (true, false) => {
++                        for (d, s) in dst.chunks_exact_mut(4).zip(src.chunks_exact(4).rev()) {
++                            d[0] = lut[0][s[0] as usize];
++                            d[1] = lut[1][s[1] as usize];
++                            d[2] = lut[2][s[2] as usize];
++                            d[3] = s[3];
++                        }
++                    }
++                    (false, false) => {
++                        for (d, s) in dst.chunks_exact_mut(4).zip(src.chunks_exact(4)) {
++                            d[0] = lut[0][s[0] as usize];
++                            d[1] = lut[1][s[1] as usize];
++                            d[2] = lut[2][s[2] as usize];
++                            d[3] = s[3];
++                        }
+                     }
+-                } else {
+-                    dst.copy_from_slice(src);
+                 }
+             }
+             return;
+@@ -1959,6 +2111,69 @@ mod blue_light_tests {
+             pw * ph
+         );
+     }
++
++    /// The gain rides along with the direct write now, rather than costing a
++    /// second pass over the panel. It has to land exactly once, and on the
++    /// channels the panel's byte order means: a table applied twice, or to the
++    /// red byte instead of the blue one, both still "look warm".
++    #[test]
++    fn the_direct_write_grades_each_channel_once() {
++        fn mid(step: u8) -> [u8; 4] {
++            struct NoSurface;
++            impl Surface for NoSurface {
++                fn make_current(&mut self) -> Result<(), crate::surface::GfxError> {
++                    Ok(())
++                }
++                fn window_size(&self) -> (u32, u32) {
++                    (out_w(), out_h())
++                }
++                fn swap(&mut self) -> Result<(), crate::surface::GfxError> {
++                    Ok(())
++                }
++                fn proc_address(&self, _name: &str) -> *const std::ffi::c_void {
++                    std::ptr::null()
++                }
++            }
++            let (pw, ph) = (out_w(), out_h());
++            let mut panel = vec![0u8; pw as usize * ph as usize * 4];
++            let target = fb::Target {
++                ptr: panel.as_mut_ptr(),
++                w: pw,
++                h: ph,
++                stride: pw as usize * 4,
++                bgr: true,
++            };
++            // SAFETY: `panel` outlives the frame drawn into it.
++            unsafe { fb::set_current_for_test(Some(target)) };
++            let mut c = Compositor::new(&NoSurface).expect("compositor");
++            let mut frame = vec![0u8; (SRC_W * SRC_H * 4) as usize];
++            for px in frame.chunks_exact_mut(4) {
++                px.copy_from_slice(&[200, 150, 100, 255]);
++            }
++            c.upload_game(&frame);
++            c.set_blue_light(step);
++            c.begin_frame();
++            c.draw_list(&[Draw::Game]);
++            c.end_frame((pw, ph));
++            // SAFETY: cleared before `panel` is dropped.
++            unsafe { fb::set_current_for_test(None) };
++            let at = ((ph / 2) as usize * pw as usize + (pw / 2) as usize) * 4;
++            [panel[at], panel[at + 1], panel[at + 2], panel[at + 3]]
++        }
++
++        let plain = mid(0);
++        let warm = mid(crate::grade::BLUE_LIGHT_MAX);
++        let lut = gain_table(crate::grade::blue_light_gain(crate::grade::BLUE_LIGHT_MAX))
++            .expect("a gain at the warmest step");
++        assert_ne!(plain, warm, "the gain did not reach the panel at all");
++        for c in 0..3 {
++            assert_eq!(
++                warm[c], lut[c][plain[c] as usize],
++                "channel {c}: {} graded to {}, wanted {}",
++                plain[c], warm[c], lut[c][plain[c] as usize]
++            );
++        }
++    }
+ }
+ 
+ mod direct_path_tests {

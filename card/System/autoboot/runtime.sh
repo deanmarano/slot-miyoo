@@ -41,6 +41,18 @@ echo 800 > /sys/class/pwm/pwmchip0/pwm0/period
 echo 6 > /sys/class/pwm/pwmchip0/pwm0/duty_cycle
 echo 1 > /sys/class/pwm/pwmchip0/pwm0/enable
 
+# The network, when the card asks for it. Booting straight into slot means no
+# launcher to switch WiFi on from, and on a handheld with no other way in that
+# would mean carrying the card to a computer for every build. Gated on a file
+# so it can be turned off from any computer: delete .slot-net.
+#
+# setsid, not just `&`: backgrounded from here it stays in this script's
+# process group, and it stopped after a single attempt rather than retrying --
+# the same thing that had to be fixed for telnetd.
+if [ -f "$ROOT"/.slot-net ] && [ -x "$ROOT"/System/net-up.sh ]; then
+	setsid "$ROOT"/System/net-up.sh "$ROOT" "$ROOT"/slot-net.txt > /dev/null 2>&1 &
+fi
+
 # Relaunch rather than quit on a crash, as the Allium hook does and for the
 # same reason, and bounded the same way: three quick deaths hands the handheld
 # to stock's own UI instead of looping on a frontend that cannot start. A

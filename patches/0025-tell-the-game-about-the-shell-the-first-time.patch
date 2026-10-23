@@ -1,0 +1,94 @@
+tell the game about the shell the first time it is told
+
+`set_sp_frame` assigned the game's `shell` flag after its early return, and
+the two fields it keeps in step started life disagreeing: the compositor's
+`bezel_shown` is true at construction, the game's `shell` is false. So the
+first call of `set_sp_frame(true)` was "no change" and returned before the
+game ever heard about it.
+
+What that looked like on the handheld: a cart booted into directly -- powered
+off in a game and switched back on, which is slot's normal resume -- drew its
+picture centred on the panel instead of at the top under the Advance SP
+shell's opening, so the shell's chin covered the last rows of the game.
+Ejecting to the shelf and going back in fixed it, because then the flag
+genuinely moved. Reported from a Mini Plus as "the bottom of the GBA game
+looks cut off, like the bezel is too big", and "I'll exit and re-enter the
+game and it will be different" -- which is the whole bug in one sentence.
+
+The flag is assigned before the early return now, so the two cannot drift
+apart again whatever either side was initialised to.
+
+The test boots a compositor, says `set_sp_frame(true)` once, and asks where
+the picture sits; against the old code it is 26 rows down, which is exactly
+where the chin starts eating it.
+
+This is the second bug of the same shape in a week: a fast path that skips
+work when a flag already holds the value being set, where the flag's starting
+value made the first real change invisible. `0024` was the other.
+
+Applies to upstream 91499a9.
+
+diff --git a/crates/slot-gfx/src/soft/mod.rs b/crates/slot-gfx/src/soft/mod.rs
+index 60f4f9b..015e100 100644
+--- a/crates/slot-gfx/src/soft/mod.rs
++++ b/crates/slot-gfx/src/soft/mod.rs
+@@ -1279,11 +1279,18 @@ impl Compositor {
+     /// playing. Upstream's name for it, and upstream's answer: a Game Boy game
+     /// gets its own bezel instead, through `set_game_bezel`.
+     pub fn set_sp_frame(&mut self, shown: bool) {
++        // Assigned before the early return, not after it. The two started out
++        // disagreeing -- `bezel_shown` true, `shell` false -- so the first
++        // call of `set_sp_frame(true)` was "no change" and the game never
++        // learned the shell was behind it. A cart booted into directly stayed
++        // centred, with the shell's chin over its last rows; going out to the
++        // shelf and back made the flag move and fixed itself, which is how it
++        // was reported from a Mini Plus.
++        self.game.shell = shown;
+         if self.bezel_shown == shown {
+             return;
+         }
+         self.bezel_shown = shown;
+-        self.game.shell = shown;
+         self.surround = None;
+         // The surround is painted only when the output rect moves, so without
+         // this the answer that was on the panel stays there -- the shell would
+@@ -1857,6 +1864,39 @@ mod neon_kernel_tests {
+ }
+ 
+ #[cfg(test)]
++mod sp_frame_tests {
++    use super::*;
++
++    /// Booting straight into a GBA cart: the first thing the compositor hears
++    /// about the shell is `set_sp_frame(true)`, and the picture has to sit at
++    /// the top of the panel under the shell's opening rather than centred in
++    /// it. Fails against the old code with the picture 26 rows down, which is
++    /// where the chin starts eating it.
++    #[test]
++    fn the_first_word_about_the_shell_reaches_the_game() {
++        struct NoSurface;
++        impl Surface for NoSurface {
++            fn make_current(&mut self) -> Result<(), crate::surface::GfxError> {
++                Ok(())
++            }
++            fn window_size(&self) -> (u32, u32) {
++                (out_w(), out_h())
++            }
++            fn swap(&mut self) -> Result<(), crate::surface::GfxError> {
++                Ok(())
++            }
++            fn proc_address(&self, _name: &str) -> *const std::ffi::c_void {
++                std::ptr::null()
++            }
++        }
++        let mut c = Compositor::new(&NoSurface).expect("compositor");
++        c.set_sp_frame(true);
++        let (_, y, _, h) = c.game.rect();
++        assert_eq!(y, 0.0, "the picture is {y} down, not under the opening");
++        assert!(h > 0.0);
++    }
++}
++
+ mod blue_light_tests {
+     use super::*;
+ 
