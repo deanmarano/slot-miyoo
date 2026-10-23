@@ -1,0 +1,255 @@
+default GBA carts to gpSP
+
+This changes behaviour rather than making upstream work here, and is
+here because the default is a performance question on this hardware.
+
+slot picks mGBA for every platform unless Config/selected_core.txt
+names a core for that cart, and the only way to name one is the START
+core picker, one game at a time. On the Mini Flip's Cortex-A7 mGBA
+interprets GBA code and takes 14-18 ms a frame against a 16.7 ms
+budget, so a cart nobody has picked a core for plays at roughly half
+speed. gpSP has an ARM dynarec and takes 6.3 ms. An unconfigured GBA
+cart should start on the core that can play it.
+
+Game Boy and Game Boy Color stay on mGBA; gpSP only runs GBA. A line in
+selected_core.txt still wins, so a cart gpSP gets wrong can be moved
+back to mGBA in the picker.
+
+core_for takes no platform and its one caller is the GBA-only picker,
+so it falls back to the GBA default rather than to Core::default,
+which stays mGBA as the initial value of an app with nothing seated.
+
+Resume and quick-save states are kept per core, so a GBA cart that was
+last played on mGBA by default will not find its old states under
+gpSP. Battery saves (.sav) are shared and carry over.
+
+Tests that assumed a GBA cart starts on mGBA are updated: the core-picker
+tests pin their carts to mGBA, the unconfigured-default test asserts
+gpSP, and the e2e and play tests look for resume states under gpSP.
+
+diff --git a/crates/slot-store/src/core.rs b/crates/slot-store/src/core.rs
+index 04d16f4..99479b6 100644
+--- a/crates/slot-store/src/core.rs
++++ b/crates/slot-store/src/core.rs
+@@ -50,7 +50,8 @@ pub fn runs(self, platform: Platform) -> bool {
+ 
+     pub fn default_for(platform: Platform) -> Core {
+         match platform {
+-            Platform::Gba | Platform::Gb | Platform::Gbc => Core::Mgba,
++            Platform::Gba => Core::Gpsp,
++            Platform::Gb | Platform::Gbc => Core::Mgba,
+         }
+     }
+ }
+@@ -66,7 +67,7 @@ pub fn core_for(root: &Path, stem: &str) -> Core {
+     crate::ini::value(root, SELECTED_CORE_FILE, stem)
+         .as_deref()
+         .and_then(Core::parse)
+-        .unwrap_or_default()
++        .unwrap_or_else(|| Core::default_for(Platform::Gba))
+ }
+ 
+ pub fn core_for_platform(root: &Path, stem: &str, platform: Platform) -> Core {
+diff --git a/crates/slot-store/tests/core.rs b/crates/slot-store/tests/core.rs
+index 36d0980..b588652 100644
+--- a/crates/slot-store/tests/core.rs
++++ b/crates/slot-store/tests/core.rs
+@@ -16,7 +16,7 @@ fn root_with(ini: Option<&str>) -> tempfile::TempDir {
+ fn absent_file_means_everything_defaults() {
+     let d = root_with(None);
+     assert!(read_selected_cores(d.path()).is_empty());
+-    assert_eq!(core_for(d.path(), "Emerald"), Core::Mgba);
++    assert_eq!(core_for(d.path(), "Emerald"), Core::Gpsp);
+ }
+ 
+ #[test]
+@@ -29,9 +29,9 @@ fn a_listed_stem_gets_its_core() {
+ }
+ 
+ #[test]
+-fn an_unlisted_stem_defaults_to_mgba() {
+-    let d = root_with(Some("Emerald = gpsp\n"));
+-    assert_eq!(core_for(d.path(), "Metroid Fusion"), Core::Mgba);
++fn an_unlisted_stem_defaults_to_gpsp() {
++    let d = root_with(Some("Emerald = mgba\n"));
++    assert_eq!(core_for(d.path(), "Metroid Fusion"), Core::Gpsp);
+ }
+ 
+ #[test]
+@@ -58,7 +58,7 @@ fn malformed_lines_are_ignored_rather_than_fatal() {
+         None,
+         "an unknown core name must not be stored"
+     );
+-    assert_eq!(core_for(d.path(), "Emerald"), Core::Mgba);
++    assert_eq!(core_for(d.path(), "Emerald"), Core::Gpsp);
+     assert_eq!(map.len(), 1, "only the one good line should survive");
+ }
+ 
+@@ -70,10 +70,10 @@ fn a_later_duplicate_wins() {
+ 
+ #[test]
+ fn the_last_line_for_a_cart_wins_even_when_it_is_the_typo() {
+-    let d = root_with(Some("Emerald = gpsp\nEmerald = notacore\n"));
++    let d = root_with(Some("Emerald = mgba\nEmerald = notacore\n"));
+     assert_eq!(
+         core_for(d.path(), "Emerald"),
+-        Core::Mgba,
++        Core::Gpsp,
+         "a line the later one superseded is still in force"
+     );
+     assert_eq!(
+@@ -82,11 +82,11 @@ fn the_last_line_for_a_cart_wins_even_when_it_is_the_typo() {
+         "the map and core_for read the same two lines differently"
+     );
+ 
+-    let d = root_with(Some("Emerald = notacore\nEmerald = gpsp\n"));
+-    assert_eq!(core_for(d.path(), "Emerald"), Core::Gpsp);
++    let d = root_with(Some("Emerald = notacore\nEmerald = mgba\n"));
++    assert_eq!(core_for(d.path(), "Emerald"), Core::Mgba);
+     assert_eq!(
+         read_selected_cores(d.path()).get("Emerald"),
+-        Some(&Core::Gpsp)
++        Some(&Core::Mgba)
+     );
+ }
+ 
+@@ -157,7 +157,7 @@ fn writing_the_default_still_records_it() {
+ }
+ 
+ #[test]
+-fn every_platform_defaults_to_mgba() {
++fn game_boy_defaults_to_mgba_and_advance_to_gpsp() {
+     let d = tempfile::tempdir().unwrap();
+     assert_eq!(
+         core_for_platform(d.path(), "Tetris", Platform::Gb),
+@@ -169,18 +169,18 @@ fn every_platform_defaults_to_mgba() {
+     );
+     assert_eq!(
+         core_for_platform(d.path(), "Emerald", Platform::Gba),
+-        Core::Mgba
++        Core::Gpsp
+     );
+ }
+ 
+ #[test]
+ fn a_cart_can_ask_for_a_non_default_core_by_hand() {
+     let d = tempfile::tempdir().unwrap();
+-    write_selected_core(d.path(), "Emerald", Core::Gpsp).unwrap();
+-    assert_ne!(Core::default_for(Platform::Gba), Core::Gpsp);
++    write_selected_core(d.path(), "Emerald", Core::Mgba).unwrap();
++    assert_ne!(Core::default_for(Platform::Gba), Core::Mgba);
+     assert_eq!(
+         core_for_platform(d.path(), "Emerald", Platform::Gba),
+-        Core::Gpsp
++        Core::Mgba
+     );
+ }
+ 
+diff --git a/crates/slot/tests/app.rs b/crates/slot/tests/app.rs
+--- a/crates/slot/tests/app.rs
++++ b/crates/slot/tests/app.rs
+@@ -760,8 +760,14 @@
+     }
+ }
+ 
++/// Every cart is pinned to mGBA, so the core-picker tests start from a known
++/// core rather than from whatever the default happens to be.
+ fn on_shelf(stems: &[&str]) -> (tempfile::TempDir, App) {
+-    booted_on_shelf(common::tmp_root_with_carts(stems))
++    let d = common::tmp_root_with_carts(stems);
++    for stem in stems {
++        slot_store::write_selected_core(d.path(), stem, Core::Mgba).unwrap();
++    }
++    booted_on_shelf(d)
+ }
+ 
+ fn on_shelf_gb(stems: &[&str]) -> (tempfile::TempDir, App) {
+@@ -820,23 +826,23 @@
+ 
+ #[test]
+ fn start_on_the_shelf_opens_the_core_picker_on_the_carts_current_core() {
+-    let (d, mut app) = on_shelf(&["Emerald", "Zzz"]);
++    let (d, mut app) = booted_on_shelf(common::tmp_root_with_carts(&["Emerald", "Zzz"]));
+     assert_eq!(app.selected_stem(), Some("Emerald"));
+ 
+     app.apply(Action::GbaDown(Btn::Start));
+     assert_eq!(
+         app.core_picker(),
+-        Some(Core::Mgba),
+-        "a cart with no line of its own runs the default core"
++        Some(Core::Gpsp),
++        "a GBA cart with no line of its own runs the default core"
+     );
+     app.apply(Action::GbaDown(Btn::B));
+     let_it_close(&mut app);
+ 
+-    slot_store::write_selected_core(d.path(), "Emerald", Core::Gpsp).unwrap();
++    slot_store::write_selected_core(d.path(), "Emerald", Core::Mgba).unwrap();
+     app.apply(Action::GbaDown(Btn::Start));
+     assert_eq!(
+         app.core_picker(),
+-        Some(Core::Gpsp),
++        Some(Core::Mgba),
+         "the chip should start in the core the cart already uses"
+     );
+ }
+diff --git a/crates/slot/tests/e2e.rs b/crates/slot/tests/e2e.rs
+--- a/crates/slot/tests/e2e.rs
++++ b/crates/slot/tests/e2e.rs
+@@ -79,7 +79,7 @@
+     }
+ 
+     fn ring(&self, stem: &str) -> StateRing {
+-        StateRing::new(&self.root, Platform::Gba, Core::Mgba, stem)
++        StateRing::new(&self.root, Platform::Gba, Core::Gpsp, stem)
+     }
+ }
+ 
+diff --git a/crates/slot/tests/play.rs b/crates/slot/tests/play.rs
+--- a/crates/slot/tests/play.rs
++++ b/crates/slot/tests/play.rs
+@@ -13,7 +13,7 @@ use slot_store::{write_slot_state, Core, Platform, SlotState, StateRing};
+ #[test]
+ fn a_tap_resumes_and_a_hold_starts_clean() {
+     let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+-    StateRing::new(d.path(), Platform::Gba, Core::Mgba, "Emerald")
++    StateRing::new(d.path(), Platform::Gba, Core::Gpsp, "Emerald")
+         .write_resume(&[7u8; 64])
+         .unwrap();
+ 
+@@ -37,7 +37,7 @@ fn a_tap_resumes_and_a_hold_starts_clean() {
+ fn auto_load_alone_decides_whether_a_tap_resumes() {
+     for (auto_load, eject_save) in [(false, true), (true, false)] {
+         let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+-        StateRing::new(d.path(), Platform::Gba, Core::Mgba, "Emerald")
++        StateRing::new(d.path(), Platform::Gba, Core::Gpsp, "Emerald")
+             .write_resume(&[7u8; 64])
+             .unwrap();
+         let s = SlotState {
+@@ -61,7 +61,7 @@ fn auto_load_alone_decides_whether_a_tap_resumes() {
+ #[test]
+ fn a_clean_start_leaves_the_state_on_disk() {
+     let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+-    let r = StateRing::new(d.path(), Platform::Gba, Core::Mgba, "Emerald");
++    let r = StateRing::new(d.path(), Platform::Gba, Core::Gpsp, "Emerald");
+     r.write_resume(&[7u8; 64]).unwrap();
+     let mut a = boot(d.path());
+     a.apply_at(Action::GbaDown(Btn::A), 0);
+@@ -113,7 +113,7 @@ fn counter_after(root: &Path, hold: bool) -> u64 {
+     }
+     s.app_mut().tick_ms(60_000);
+     s.app_mut().settle_saves();
+-    let state = persist::read_resume(root, Platform::Gba, Core::Mgba, "Emerald")
++    let state = persist::read_resume(root, Platform::Gba, Core::Gpsp, "Emerald")
+         .unwrap()
+         .expect("nothing was flushed");
+     u64::from_le_bytes(state.try_into().expect("the mock's state is 8 bytes"))
+@@ -127,7 +127,7 @@ fn a_hold_hands_the_core_no_state_and_a_tap_hands_it_the_resume() {
+         persist::flush(
+             d.path(),
+             Platform::Gba,
+-            Core::Mgba,
++            Core::Gpsp,
+             "Emerald",
+             Some(&500_000u64.to_le_bytes()),
+             None,

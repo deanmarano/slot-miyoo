@@ -1,0 +1,61 @@
+take the Advance SP shell off a stretched picture
+
+This restores what stretching did before the rebase onto upstream f4b7bc3,
+and it changes how Game Boy and Game Boy Color carts look in that mode.
+
+L1 stretches a Game Boy picture until it fills the panel's height, and
+App::shown_game_bezel already drops a console's own bezel while it is
+stretched. f4b7bc3 added a second kind of frame that has no such rule: when
+the AGS-102 Advance SP shell is picked, which is the default for every
+console on a 4:3 panel, draw_sp_strip lays the shell's lettering strip over
+the lower part of the game, and the compositor pins the picture to the top
+of the panel. With a picture that already fills the height, the strip lands
+on game rows, and it did so on every launch because the mode is remembered
+per cart.
+
+sp_frame() is the one question both of those ask, so it answers false while
+the picture is stretched, the same rule shown_game_bezel applies.
+
+diff --git a/crates/slot/src/app.rs b/crates/slot/src/app.rs
+--- a/crates/slot/src/app.rs
++++ b/crates/slot/src/app.rs
+@@ -1119,6 +1119,9 @@
+     }
+ 
+     pub fn sp_frame(&self) -> bool {
++        if self.video_mode == VideoMode::Stretch {
++            return false;
++        }
+         self.resolved_bezel(self.playing_platform()) == BezelPick::Ags102
+     }
+ 
+diff --git a/crates/slot/tests/app.rs b/crates/slot/tests/app.rs
+--- a/crates/slot/tests/app.rs
++++ b/crates/slot/tests/app.rs
+@@ -1942,6 +1942,26 @@
+             }
+         );
+     }
++}
++
++#[test]
++fn stretching_a_game_boy_takes_the_advance_sp_shell_off() {
++    let d = common::tmp_root_with_gb_carts(&["Tetris"]);
++    let mut s = session_playing(d.path());
++    s.app_mut().set_panel((640, 480));
++    assert!(
++        s.app().sp_frame(),
++        "the shell is the default on a 4:3 panel"
++    );
++    s.feed([RawEvent::Down(Btn::L1)], 100);
++    s.feed([RawEvent::Up(Btn::L1)], 120);
++    assert!(
++        !s.app().sp_frame(),
++        "the shell's strip would sit over a picture that fills the height"
++    );
++    s.feed([RawEvent::Down(Btn::R1)], 140);
++    s.feed([RawEvent::Up(Btn::R1)], 160);
++    assert!(s.app().sp_frame());
+ }
+ 
+ #[test]
