@@ -1,0 +1,166 @@
+draw the game when the direct path cannot
+
+A frame whose display list is nothing but `Draw::Game` takes the direct path:
+`draw_list` returns without touching the canvas, because the game is going
+straight to the panel from `output_frame` instead. That is the fast path this
+device leans on -- it saves a whole canvas copy per frame.
+
+`output_frame` then decides whether it can really do that, and it has four
+conditions, not one: the canvas has to match the rect, the panel has to want
+the byte order the canvas holds, and the blue-light gain has to be identity.
+When any of them said no, the direct write was skipped and the panel was
+painted from a canvas that nothing had drawn into. The frame came out as the
+surround and no game.
+
+Blue light is what found it, because turning the filter on is the only one of
+those conditions a user can switch: reported from a Miyoo Mini Plus as "black,
+or just the shaders". The others are latent on hardware this port has not met
+-- a panel wanting RGB rather than BGR would do the same thing with the filter
+off.
+
+So the decision is made once and, when the direct write cannot happen, the
+game is drawn into the canvas before the copy. The fast path is unchanged when
+it applies.
+
+The test drives `output_frame` against memory the caller owns, through a
+`#[cfg(test)]` hook on the framebuffer's current target, and fails against the
+old code with "the panel came out blank: 0 lit pixels of 421120" -- which is
+the bug as the handheld showed it.
+
+A second, cheaper fix is left for later: the gain could be folded into the
+direct write as a lookup per channel, so blue light keeps the fast path rather
+than costing a full extra pass over the frame.
+
+Applies to upstream 91499a9.
+
+diff --git a/crates/slot-gfx/src/soft/fb.rs b/crates/slot-gfx/src/soft/fb.rs
+index d13f87c..a2244cf 100644
+--- a/crates/slot-gfx/src/soft/fb.rs
++++ b/crates/slot-gfx/src/soft/fb.rs
+@@ -58,6 +58,16 @@ fn set_current(t: Option<Target>) {
+     CURRENT.with(|c| c.set(t));
+ }
+ 
++/// Point the output at memory the caller owns, so `output_frame` can be driven
++/// without a framebuffer. Tests only: the real target comes from `/dev/fb0`.
++///
++/// # Safety
++/// The target's memory must outlive the frames drawn into it.
++#[cfg(test)]
++pub unsafe fn set_current_for_test(t: Option<Target>) {
++    set_current(t);
++}
++
+ #[repr(C)]
+ #[derive(Default, Clone, Copy)]
+ struct Bitfield {
+diff --git a/crates/slot-gfx/src/soft/mod.rs b/crates/slot-gfx/src/soft/mod.rs
+index f42dc11..60f4f9b 100644
+--- a/crates/slot-gfx/src/soft/mod.rs
++++ b/crates/slot-gfx/src/soft/mod.rs
+@@ -1486,13 +1486,33 @@ impl Compositor {
+             return;
+         }
+ 
++        // `draw_list` wrote nothing to the canvas when it chose the direct
++        // path -- the game is meant to go straight to the panel from here. If
++        // any of the conditions below says it cannot, the canvas holds last
++        // frame's surround and nothing else, so the game has to be drawn into
++        // it after all or the panel shows a bezel over a blank screen.
++        //
++        // Blue light is what found this: its gain turns `identity` off, which
++        // skipped the direct write and copied an empty canvas. Reported as a
++        // black screen, or as the console body with no game inside it.
++        let direct = self.direct_game && w == cw && h == ch && target.bgr && identity;
++        if self.direct_game && !direct {
++            let t = std::time::Instant::now();
++            let path = self.game.draw(&mut self.canvas, None);
++            if self.profiling {
++                self.profile.game_us += t.elapsed().as_micros() as u64;
++                self.profile.path = path;
++                self.profile.direct = false;
++            }
++        }
++
+         // The case that actually runs on this device: the canvas is exactly the
+         // size of the rect, the panel wants the order the canvas already holds,
+         // and there is no gain. That makes every row a memcpy.
+         // With nothing but the game to draw, scale it onto the panel here
+         // rather than via the canvas. Same conditions as the one-to-one copy
+         // below, since it is that copy being folded into the game pass.
+-        if self.direct_game && w == cw && h == ch && target.bgr && identity {
++        if direct {
+             let t = std::time::Instant::now();
+             let path = self.game.draw_direct(
+                 FbDest {
+@@ -1837,6 +1857,70 @@ mod neon_kernel_tests {
+ }
+ 
+ #[cfg(test)]
++mod blue_light_tests {
++    use super::*;
++
++    /// A frame with nothing but the game in it takes the direct path, which
++    /// writes to the panel and leaves the canvas alone. Blue light turns that
++    /// path off -- and the game then has to reach the canvas, or the panel
++    /// shows the surround over a blank screen.
++    ///
++    /// Reported from a Mini Plus as "black, or just the shaders".
++    #[test]
++    fn the_game_still_reaches_the_panel_with_blue_light_on() {
++        let (pw, ph) = (out_w(), out_h());
++        let mut panel = vec![0u8; pw as usize * ph as usize * 4];
++        let target = fb::Target {
++            ptr: panel.as_mut_ptr(),
++            w: pw,
++            h: ph,
++            stride: pw as usize * 4,
++            bgr: true,
++        };
++        // SAFETY: `panel` outlives the frame drawn into it.
++        unsafe { fb::set_current_for_test(Some(target)) };
++
++        struct NoSurface;
++        impl Surface for NoSurface {
++            fn make_current(&mut self) -> Result<(), crate::surface::GfxError> {
++                Ok(())
++            }
++            fn window_size(&self) -> (u32, u32) {
++                (out_w(), out_h())
++            }
++            fn swap(&mut self) -> Result<(), crate::surface::GfxError> {
++                Ok(())
++            }
++            fn proc_address(&self, _name: &str) -> *const std::ffi::c_void {
++                std::ptr::null()
++            }
++        }
++        let mut c = Compositor::new(&NoSurface).expect("compositor");
++        let mut frame = vec![0u8; (SRC_W * SRC_H * 4) as usize];
++        for (i, px) in frame.chunks_exact_mut(4).enumerate() {
++            px.copy_from_slice(&[200, 180, 160, 255]);
++            let _ = i;
++        }
++        c.upload_game(&frame);
++        c.set_blue_light(crate::grade::BLUE_LIGHT_MAX);
++        c.begin_frame();
++        c.draw_list(&[Draw::Game]);
++        c.end_frame((pw, ph));
++
++        // SAFETY: clearing the pointer before `panel` is dropped.
++        unsafe { fb::set_current_for_test(None) };
++        let lit = panel
++            .chunks_exact(4)
++            .filter(|p| p[0] > 8 || p[1] > 8)
++            .count();
++        assert!(
++            lit > (pw * ph / 8) as usize,
++            "the panel came out blank: {lit} lit pixels of {}",
++            pw * ph
++        );
++    }
++}
++
+ mod direct_path_tests {
+     use super::{fb, Dest, FbDest, Game, Image};
+     use crate::pipeline::{SRC_H, SRC_W};

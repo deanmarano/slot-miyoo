@@ -80,11 +80,11 @@ emits a display list of six `Draw` variants, and all the GL sits behind one
 `/dev/fb0`; the port adds a third, a software rasteriser writing to a mmapped
 framebuffer. Nothing above that seam changed.
 
-The twenty-two patches, by what they are about:
+The twenty-three patches, by what they are about:
 
 | | |
 |---|---|
-| the renderer | `0002` software backend, `0009` picture size, `0012`/`0013` bezels, `0015` cart compositing |
+| the renderer | `0002` software backend, `0024` the game drawn when the direct path cannot, `0009` picture size, `0012`/`0013` bezels, `0015` cart compositing |
 | armv7 | `0001` crash registers, `0004` 32-bit evdev bitmaps |
 | device hardware | `0003` button codes, `0005` `MI_AO` audio, `0008` PWM backlight, `0010` battery source |
 | memory | `0016` cart faces, `0017` rewind sizing, `0018` texture frees, `0019` `need_fullpath` |

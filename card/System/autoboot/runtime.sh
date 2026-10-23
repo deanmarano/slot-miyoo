@@ -15,7 +15,18 @@
 # what slot wants: audioserver owns MI_AO and slot's MI_AO_SetPubAttr comes
 # back E_MI_ERR_NOT_PERM while it holds it.
 ROOT=/mnt/SDCARD
-CUSTOMER_DIR="$ROOT"/miyoo285
+# The firmware's payload on the card, which each handheld names after its own
+# model: miyoo285 on the Mini Flip, miyoo354 on the Mini Plus, miyoo on the
+# Mini. Found rather than assumed -- a card written for one of them would send
+# the others to a directory that is not there, and the fallback below would be
+# the only thing keeping the handheld usable.
+CUSTOMER_DIR=/customer
+for d in miyoo285 miyoo354 miyoo; do
+	if [ -d "$ROOT/$d/app" ]; then
+		CUSTOMER_DIR="$ROOT/$d"
+		break
+	fi
+done
 export LD_LIBRARY_PATH="/lib:/config/lib:$CUSTOMER_DIR/lib"
 
 # The panel and the backlight, which stock brings up on the branch this
@@ -49,5 +60,5 @@ done
 
 # Stock's UI, started the way main starts it. Returning from here puts us back
 # in main's loop, which runs this script again.
-cd "$CUSTOMER_DIR"/app 2>/dev/null || cd /customer/app || exit 0
+cd "$CUSTOMER_DIR"/app 2>/dev/null || cd /customer/app 2>/dev/null || exit 0
 exec ./MainUI
