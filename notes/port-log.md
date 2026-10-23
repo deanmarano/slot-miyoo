@@ -243,12 +243,17 @@ touched: the UI emits the same display list it always did.
 | `0017` | scaling rewind by the size of a state |
 | `0018` | freeing a texture, rather than only recycling it |
 | `0019` | not reading a ROM the core is going to open itself |
+| `0027` | defaulting a GBA cart to gpSP, the core that can play it here |
+| `0028` | the Switch Online Game Boy palettes, in the core and in slot's list |
+| `0029` | taking the Advance SP shell off a stretched picture |
+| `0030` | the five app tests that were written for upstream's canvas |
 
 `0006` is a gap: it timed the eject, answered its question — the stall was a
 deploy writing to the same card, not the eject — and was retired. `task patch`
 applies the glob in order and does not care, where renumbering would stale
 every `patches/00NN` reference in these notes. `cores/` carries two core
-patches of its own, one of them the other half of `0019`.
+patches of its own: one is the other half of `0019`, the other the other half
+of `0028`.
 
 ### Toolchain and cores
 
